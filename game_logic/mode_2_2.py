@@ -54,15 +54,24 @@ def handle_reply(data):
         session_secrets[session_id]["secret"] = secret
         return
 
-    # Убедимся, что есть вопрос
-    last_question = None
-    for sess in session_secrets.values():
-        if isinstance(sess, dict) and "last_question" in sess:
-            last_question = sess["last_question"]
+    # Найдём вопрос от другого игрока
+    other_session_id = None
+    for role, sid in room_roles.get(room, {}).items():
+        if sid != session_id:
+            other_session_id = sid
             break
 
-    if not last_question:
+    if not other_session_id or other_session_id not in session_secrets:
+        print("Нет второго игрока или нет данных")
         return
+
+    last_question = session_secrets[other_session_id].get("last_question")
+    if not last_question:
+        print("Нет вопроса от второго игрока")
+        return
+
+    print("Последний вопрос:", last_question)
+    print("Ответ:", answer)
 
     numbers = list(range(-100, 101))
     to_dim = []
@@ -70,18 +79,14 @@ def handle_reply(data):
     match = re.search(r"число\s*больше\s*(-?\d+)", last_question)
     if match:
         val = int(match.group(1))
-        if answer == "да":
-            to_dim = [n for n in numbers if n <= val]
-        elif answer == "нет":
-            to_dim = [n for n in numbers if n > val]
+        to_dim = [n for n in numbers if (answer == "да" and n <= val) or (answer == "нет" and n > val)]
 
     match = re.search(r"число\s*меньше\s*(-?\d+)", last_question)
     if match:
         val = int(match.group(1))
-        if answer == "да":
-            to_dim = [n for n in numbers if n >= val]
-        elif answer == "нет":
-            to_dim = [n for n in numbers if n < val]
+        to_dim = [n for n in numbers if (answer == "да" and n >= val) or (answer == "нет" and n < val)]
+
+    print("Зачёркиваем числа:", to_dim)
 
     if to_dim:
         emit("filter_numbers_2_2", {
