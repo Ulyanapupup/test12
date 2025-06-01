@@ -484,7 +484,7 @@ def handle_join_game_room_2_2(data):
     
     # Инициализация комнаты если её нет
     if room not in room_roles:
-        room_roles[room] = {'guesser2': None, 'creator2': None}
+        room_roles[room] = {'guesser': None, 'creator': None}
     
     # Вызываем join_game из mode_2_2
     join_game({"room": room})
@@ -502,10 +502,10 @@ def handle_select_role_2_2(data):
     role = data['role']
     
     if room not in room_roles:
-        room_roles[room] = {'guesser2': None, 'creator2': None}
+        room_roles[room] = {'guesser': None, 'creator': None}
     
     # Освобождаем предыдущие роли этого игрока
-    for r in ['guesser2', 'creator2']:
+    for r in ['guesser', 'creator']:
         if room_roles[room][r] == session_id:
             room_roles[room][r] = None
     
@@ -532,19 +532,19 @@ def handle_start_game_2_2(data):
     if not roles:
         return {'status': 'error', 'message': 'Комната не существует'}
     
-    guesser2_id = roles.get('guesser2')
-    creator2_id = roles.get('creator2')
+    guesser_id = roles.get('guesser')
+    creator_id = roles.get('creator')
     
-    if guesser2_id and creator2_id and guesser2_id != creator2_id:
-        guesser2_sid = session_to_sid.get(guesser2_id)
-        creator2_sid = session_to_sid.get(creator2_id)
+    if guesser_id and creator_id and guesser_id != creator_id:
+        guesser_sid = session_to_sid.get(guesser_id)
+        creator_sid = session_to_sid.get(creator_id)
         
-        if not guesser2_sid or not creator2_sid:
+        if not guesser_sid or not creator_sid:
             return {'status': 'error', 'message': 'Один из игроков отключён'}
         
         # Инициализация игры (теперь без создания экземпляра класса)
-        emit('redirect_2_2', {'url': f'/game2/guesser_2_2?room={room}'}, to=guesser2_sid)
-        emit('redirect_2_2', {'url': f'/game2/creator_2_2?room={room}'}, to=creator2_sid)
+        emit('redirect_2_2', {'url': f'/game2/guesser_2_2?room={room}'}, to=guesser_sid)
+        emit('redirect_2_2', {'url': f'/game2/creator_2_2?room={room}'}, to=creator_sid)
         
         return {'status': 'ok'}
     else:
@@ -567,8 +567,8 @@ def handle_guess_logic_2_2(data):
     session_id = data['session_id']
     message = data['message']
     
-    # Проверяем, что игрок в комнате
-    if room in room_roles and session_id in {room_roles[room]['guesser2'], room_roles[room]['creator2']}:
+    # Проверяем роль отправителя
+    if room in room_roles and room_roles[room]['guesser'] == session_id:
         handle_guess({
             "room": room,
             "session_id": session_id,
@@ -580,8 +580,8 @@ def handle_reply_logic_2_2(data):
     room = data['room']
     session_id = data['session_id']
     
-    # Проверяем, что игрок в комнате
-    if room in room_roles and session_id in {room_roles[room]['guesser2'], room_roles[room]['creator2']}:
+    # Проверяем, что отправитель - создатель
+    if room in room_roles and room_roles[room]['creator'] == session_id:
         reply_data = {
             "room": room,
             "session_id": session_id
@@ -600,7 +600,7 @@ def handle_set_secret_2_2(data):
     session_id = data['session_id']
     secret = data['secret']
     
-    if room in room_roles and room_roles[room]['creator2'] == session_id:
+    if room in room_roles and room_roles[room]['creator'] == session_id:
         set_secret({
             "session_id": session_id,
             "secret": secret
