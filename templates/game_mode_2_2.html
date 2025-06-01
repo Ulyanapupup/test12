@@ -56,20 +56,20 @@
   
   <div id="role-selection">
     <h3>Выберите роль:</h3>
-    <button id="role-guesser" class="role-button" onclick="chooseRole('player1')">Игрок 1</button>
-    <button id="role-creator" class="role-button" onclick="chooseRole('player2')">Игрок 2</button>
+    <button id="role-player1" class="role-button">Игрок 1</button>
+    <button id="role-player2" class="role-button">Игрок 2</button>
   </div>
   
   <div id="number-input" style="display: none; margin-top: 20px;">
-	<h3>Загадайте число от -1000 до 1000:</h3>
+    <h3>Загадайте число от -1000 до 1000:</h3>
     <input type="number" id="secret-number" min="-1000" max="1000" value="0">
-    <button onclick="setSecretNumber()">Загадать</button>
+    <button id="set-secret-btn">Загадать</button>
     <p id="secret-status"></p>
   </div>
   
   <div id="status-message"></div>
   
-  <button id="start-game" disabled onclick="startGame()">Играть</button>
+  <button id="start-game" disabled>Играть</button>
   
   <button id="leave-game">Покинуть игру</button>
   

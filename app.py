@@ -502,10 +502,10 @@ def handle_select_role_2_2(data):
     role = data['role']
     
     if room not in room_roles:
-        room_roles[room] = {'guesser': None, 'creator': None}
+        room_roles[room] = {'player1': None, 'player2': None}
     
     # Освобождаем предыдущие роли этого игрока
-    for r in ['guesser', 'creator']:
+    for r in ['player1', 'player2']:
         if room_roles[room][r] == session_id:
             room_roles[room][r] = None
     

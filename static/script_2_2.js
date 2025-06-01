@@ -5,6 +5,7 @@ const sessionId = window.session_id;
 
 let myRole = null;
 let currentRoles = { player1: null, player2: null };
+let secrets = { player1: null, player2: null };
 
 // Подключение к комнате
 socket.emit('join_game_room_2_2', { room, session_id: sessionId });
@@ -17,14 +18,6 @@ socket.on('redirect_2_2', (data) => {
 socket.on('roles_updated_2_2', (data) => {
     console.log('Получены обновленные роли:', data);
     currentRoles = data.roles || { player1: null, player2: null };
-	secrets = data.secrets || { player1: null, player2: null };
-    myRole = null;
-    for (const [role, sid] of Object.entries(currentRoles)) {
-        if (sid === sessionId) {
-            myRole = role;
-            break;
-        }
-    }
     updateUI();
 });
 
@@ -76,7 +69,7 @@ function canStartGame() {
     return currentRoles.player1 && 
            currentRoles.player2 && 
            currentRoles.player1 !== currentRoles.player2 &&
-		   secrets.player1 && 
+           secrets.player1 && 
            secrets.player2;
 }
 
@@ -85,20 +78,29 @@ function updateUI() {
     const player2Btn = document.getElementById('role-player2');
     const startBtn = document.getElementById('start-game');
     
-    player1Btn.classList.toggle('selected', myRole === 'player1');
-    player2Btn.classList.toggle('selected', myRole === 'player2');
-    player1Btn.disabled = !!currentRoles.player1 && currentRoles.player1 !== sessionId;
-    player2Btn.disabled = !!currentRoles.player2 && currentRoles.player2 !== sessionId;
+    if (player1Btn && player2Btn) {
+        player1Btn.classList.toggle('selected', myRole === 'player1');
+        player2Btn.classList.toggle('selected', myRole === 'player2');
+        player1Btn.disabled = !!currentRoles.player1 && currentRoles.player1 !== sessionId;
+        player2Btn.disabled = !!currentRoles.player2 && currentRoles.player2 !== sessionId;
+    }
     
     let statusMessage = myRole ? `Ваша роль: ${getRoleName(myRole)}` : 'Выберите роль';
     if (currentRoles.player1 && currentRoles.player1 !== sessionId) {
-        statusMessage += ` | Угадывающий: другой игрок`;
+        statusMessage += ` | Игрок 1: другой игрок`;
     }
     if (currentRoles.player2 && currentRoles.player2 !== sessionId) {
-        statusMessage += ` | Загадывающий: другой игрок`;
+        statusMessage += ` | Игрок 2: другой игрок`;
     }
-    document.getElementById('status-message').textContent = statusMessage;
-    startBtn.disabled = !canStartGame();
+    
+    const statusElement = document.getElementById('status-message');
+    if (statusElement) {
+        statusElement.textContent = statusMessage;
+    }
+    
+    if (startBtn) {
+        startBtn.disabled = !canStartGame();
+    }
 }
 
 function startGame() {
@@ -108,28 +110,34 @@ function startGame() {
         socket.emit('start_game_2_2', { room }, (response) => {
             if (response && response.status === 'ok') {
                 console.log('2.2 Game started successfully, waiting for redirect...');
-                // Здесь не нужно делать ничего, сервер сам отправит redirect_2_2
             } else {
                 console.error('Start error:', response?.message || 'Unknown error');
                 alert(response?.message || 'Ошибка запуска игры');
             }
         });
     } else {
-        alert('Необходимо чтобы один игрок был Угадывающим, а другой - Загадывающим!');
+        const missing = [];
+        if (!currentRoles.player1 || !currentRoles.player2) missing.push("не выбраны роли");
+        if (!secrets.player1 || !secrets.player2) missing.push("не загаданы числа");
+        alert(`Нельзя начать игру: ${missing.join(" и ")}`);
     }
 }
 
 function leaveGame() {
     if (confirm('Вы уверены, что хотите покинуть игру?')) {
-        socket.emit('leave_game_2_2', { room, session_id: sessionId });
+        socket.emit('leave_game', { room, session_id: sessionId });
         window.location.href = `/game?room=${room}`;
     }
 }
 
 // Инициализация
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('role-player1').addEventListener('click', () => chooseRole('player1'));
-    document.getElementById('role-player2').addEventListener('click', () => chooseRole('player2'));
-    document.getElementById('start-game').addEventListener('click', startGame);
-    document.getElementById('leave-game').addEventListener('click', leaveGame);
+    document.getElementById('role-player1')?.addEventListener('click', () => chooseRole('player1'));
+    document.getElementById('role-player2')?.addEventListener('click', () => chooseRole('player2'));
+    document.getElementById('set-secret-btn')?.addEventListener('click', setSecretNumber);
+    document.getElementById('start-game')?.addEventListener('click', startGame);
+    document.getElementById('leave-game')?.addEventListener('click', leaveGame);
+    
+    // Инициализация UI
+    updateUI();
 });
