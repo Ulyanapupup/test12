@@ -32,17 +32,17 @@ class Game2_2:
             v = self.pending_checks[role]['value']
             
             if t == '>' and answer == 'да':
-                self.dimmed_numbers[other_role].update(range(-1000, v + 1))
-                return {'dim': list(range(-1000, v + 1)), 'target': other_role}
+                self.dimmed_numbers[other_role].update(range(-100, v + 1))
+                return {'dim': list(range(-100, v + 1)), 'target': other_role}
             elif t == '>' and answer == 'нет':
-                self.dimmed_numbers[other_role].update(range(v + 1, 1001))
-                return {'dim': list(range(v + 1, 1001)), 'target': other_role}
+                self.dimmed_numbers[other_role].update(range(v + 1, 101))
+                return {'dim': list(range(v + 1, 101)), 'target': other_role}
             elif t == '<' and answer == 'да':
-                self.dimmed_numbers[other_role].update(range(v, 1001))
-                return {'dim': list(range(v, 1001)), 'target': other_role}
+                self.dimmed_numbers[other_role].update(range(v, 101))
+                return {'dim': list(range(v, 101)), 'target': other_role}
             elif t == '<' and answer == 'нет':
-                self.dimmed_numbers[other_role].update(range(-1000, v))
-                return {'dim': list(range(-1000, v)), 'target': other_role}
+                self.dimmed_numbers[other_role].update(range(-100, v))
+                return {'dim': list(range(-100, v)), 'target': other_role}
                 
         elif role in self.last_guesses and self.last_guesses[role] is not None:
             correct = self.last_guesses[role] == self.secrets.get(other_role)
