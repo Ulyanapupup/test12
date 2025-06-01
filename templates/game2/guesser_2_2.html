@@ -102,13 +102,6 @@
 
   <div class="panel">
     <h3>Ты — Угадывающий</h3>
-    
-    <div class="secret-input">
-      <p>Загадай число от -100 до 100:</p>
-	  <input type="number" id="secret-number" value="0" min="-100" max="100">
-      <button onclick="confirmNumber()">Подтвердить</button>
-      <p id="status"></p>
-    </div>
 
     <div>
       <h4>Числа загадывающего:</h4>
@@ -131,22 +124,6 @@
 
     let currentPage = 0;
     let dimmedNumbers = new Set();
-    let secret = null;
-
-    function confirmNumber() {
-      const num = parseInt(document.getElementById("secret-number").value);
-      if (num >= -100 && num <= 100) {
-        secret = num;
-        statusP.textContent = `Вы загадали: ${secret}`;
-        socket.emit("reply_logic_2_2", {
-          room: room,
-          session_id: sessionId,
-          secret: secret
-        });
-      } else {
-        alert("Введите число в диапазоне -100 до 100");
-      }
-    }
 
     function renderNumbers() {
 		numberGrid.innerHTML = "";
@@ -189,27 +166,28 @@
     });
 
     function sendMessage() {
-      const msg = chatInput.value.trim();
-      if (!msg) return;
+	  const msg = chatInput.value.trim();
+	  if (!msg) return;
 
-      socket.emit("chat_message", {
-        room: room,
-        session_id: sessionId,
-        message: msg
-      });
+	  socket.emit("chat_message", {
+		room: room,
+		session_id: sessionId,
+		message: msg
+	  });
 
-      addMessage("Вы", msg);
-      
-      if (msg.match(/больше|меньше|это число/i)) {
-        socket.emit("guess_logic_2_2", {
-          room: room,
-          session_id: sessionId,
-          message: msg
-        });
-      }
-      
-      chatInput.value = "";
-    }
+	  addMessage("Вы", msg);
+	  
+	  // Отправляем вопрос или предположение
+	  if (msg.match(/больше|меньше|это число/i)) {
+		socket.emit("guess_logic_2_2", {
+		  room: room,
+		  session_id: sessionId,
+		  message: msg
+		});
+	  }
+	  
+	  chatInput.value = "";
+	}
 
     function addMessage(sender, text) {
       const div = document.createElement("div");
@@ -226,34 +204,31 @@
     });
 
     socket.on('filter_numbers_2_2', (data) => {
-		console.log("Received filter_numbers_2_2:", data);
-		if (data.target === role) {
-			data.dim.forEach(num => dimmedNumbers.add(num));
-			renderNumbers();
-		}
+	  console.log("Received filter_numbers_2_2:", data);
+	  // Применяем фильтрацию независимо от роли
+	  data.dim.forEach(num => dimmedNumbers.add(num));
+	  renderNumbers();
 	});
     
     socket.on('guess_result_2_2', (data) => {
-      if (data.target === role) {
-        const overlay = document.createElement('div');
-        overlay.style.position = 'fixed';
-        overlay.style.top = 0;
-        overlay.style.left = 0;
-        overlay.style.width = '100%';
-        overlay.style.height = '100%';
-        overlay.style.background = 'rgba(0,0,0,0.8)';
-        overlay.style.color = 'white';
-        overlay.style.fontSize = '32px';
-        overlay.style.display = 'flex';
-        overlay.style.justifyContent = 'center';
-        overlay.style.alignItems = 'center';
-        overlay.style.zIndex = 1000;
-        overlay.innerText = data.correct
-          ? `✅ Они угадали ваше число ${data.value}!`
-          : `❌ Это не ваше число ${data.value}`;
-        document.body.appendChild(overlay);
-        setTimeout(() => overlay.remove(), 3000);
-      }
+		const overlay = document.createElement('div');
+		overlay.style.position = 'fixed';
+		overlay.style.top = 0;
+		overlay.style.left = 0;
+		overlay.style.width = '100%';
+		overlay.style.height = '100%';
+		overlay.style.background = 'rgba(0,0,0,0.8)';
+		overlay.style.color = 'white';
+		overlay.style.fontSize = '32px';
+		overlay.style.display = 'flex';
+		overlay.style.justifyContent = 'center';
+		overlay.style.alignItems = 'center';
+		overlay.style.zIndex = 1000;
+		overlay.innerText = data.correct
+		  ? `✅ Они угадали ваше число ${data.value}!`
+		  : `❌ Это не ваше число ${data.value}`;
+		document.body.appendChild(overlay);
+		setTimeout(() => overlay.remove(), 3000);
     });
 
     chatInput.addEventListener("keydown", function (e) {
