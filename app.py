@@ -28,14 +28,6 @@ game_sessions_2_2 = {}
 
 # Хранилище комнат для сетевой игры режимов 2.1 и 2.2
 rooms = {}
-# Формат rooms:
-# rooms = {
-#   'ROOMCODE': {
-#       'players': set(session_ids),
-#       'creator': session_id,
-#       'mode': None  # '2.1' или '2.2' после выбора
-#   }
-# }
 
 session_to_sid = {}  # сопоставление session_id -> socket.id
 
@@ -487,7 +479,7 @@ def handle_join_game_room_2_2(data):
 
     # Инициализация комнаты если её нет
     if room not in room_roles:
-        room_roles[room] = {'player1': None, 'player2': None}
+        room_roles[room] = {'guesser': None, 'creator': None}
 
     emit('roles_updated_2_2', {
         'roles': room_roles[room],
@@ -496,102 +488,75 @@ def handle_join_game_room_2_2(data):
     
 @socketio.on('select_role_2_2')
 def handle_select_role_2_2(data):
+    print(f"Выбор роли 2.2: комната {data['room']}, игрок {data['session_id']}, роль {data['role']}")
     room = data['room']
     session_id = data['session_id']
     role = data['role']
     
-    if room not in rooms:
-        emit('error', {'message': 'Комната не существует'}, to=session_id)
-        return {'error': 'Комната не существует'}
+    if room not in room_roles:
+        room_roles[room] = {'guesser': None, 'creator': None}
     
-    # Проверка, что роль не занята
-    for sid, existing_role in rooms[room].get('roles', {}).items():
-        if existing_role == role and sid != session_id:
-            emit('role_taken_2_2', {'role': role}, to=session_id)
-            return {'error': 'Роль уже занята'}
+    # Освобождаем предыдущие роли этого игрока
+    for r in ['guesser', 'creator']:
+        if room_roles[room][r] == session_id:
+            room_roles[room][r] = None
     
-    # Сохраняем роль
-    if 'roles' not in rooms[room]:
-        rooms[room]['roles'] = {}
-    rooms[room]['roles'][session_id] = role
+    # Назначаем новую роль
+    room_roles[room][role] = session_id
     
-    # Отправляем обновление
+    # Обновляем роли в основной структуре rooms
+    if room in rooms:
+        if 'roles' not in rooms[room]:
+            rooms[room]['roles'] = {}
+        rooms[room]['roles'][session_id] = role
+    
     emit('roles_updated_2_2', {
-        'roles': rooms[room]['roles'],
+        'roles': room_roles[room],
         'your_role': role
     }, room=room)
-    
-    return {'status': 'ok'}
     
 @socketio.on('start_game_2_2')
 def handle_start_game_2_2(data):
     room = data['room']
+    session_id = session.get('session_id')
+    roles = room_roles.get(room, {})
     
-    if room not in rooms or 'roles' not in rooms[room]:
+    if not roles:
         return {'status': 'error', 'message': 'Комната не существует'}
     
-    roles = rooms[room]['roles']
-    if len(roles) != 2 or len(set(roles.values())) != 2:
-        return {'status': 'error', 'message': 'Оба игрока должны выбрать разные роли'}
+    guesser_id = roles.get('guesser')
+    creator_id = roles.get('creator')
     
-    # Проверка загаданных чисел
-    if not all(secrets.values()):
-        return {'status': 'error', 'message': 'Оба игрока должны загадать числа'}
-    
-    # Запуск игры
-    game_sessions_2_2[room] = Game2_2()
-    emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, room=room)
-    
-    return {'status': 'ok'}
+    if guesser_id and creator_id and guesser_id != creator_id:
+        guesser_sid = session_to_sid.get(guesser_id)
+        creator_sid = session_to_sid.get(creator_id)
         
-@app.route('/game2/player')
-def game_player():
+        if not guesser_sid or not creator_sid:
+            return {'status': 'error', 'message': 'Один из игроков отключён'}
+        
+        game_sessions_2_2[room] = Game2_2()
+        
+        # Добавьте логирование
+        print(f"Starting game 2.2 in room {room}")
+        print(f"Guesser: {guesser_id}, Creator: {creator_id}")
+        
+        # Отправляем редирект
+        emit('redirect_2_2', {'url': f'/game2/guesser_2_2?room={room}'}, to=guesser_sid)
+        emit('redirect_2_2', {'url': f'/game2/creator_2_2?room={room}'}, to=creator_sid)
+        
+        return {'status': 'ok'}
+    else:
+        return {'status': 'error', 'message': 'Оба игрока должны выбрать разные роли!'}
+        
+@app.route('/game2/guesser_2_2')
+def game_guesser_2_2():
     room = request.args.get('room')
-    session_id = session['session_id']
-    
-    # Определяем роль игрока
-    role = None
-    if room in room_roles:
-        for r, sid in room_roles[room].items():
-            if sid == session_id:
-                role = r
-                break
-    
-    if not role:
-        return redirect(url_for('game_mode_2_2', room=room))
-    
-    # Определяем, чей сейчас ход
-    game = game_sessions_2_2.get(room, Game2_2())
-    is_my_turn = game.current_player == role
-    
-    return render_template('game2/player.html', 
-                         room=room, 
-                         session=session,
-                         role=role,
-                         is_my_turn=is_my_turn)
+    return render_template('game2/guesser_2_2.html', room=room, session=session)
 
-@socketio.on('set_secret_2_2')
-def handle_set_secret_2_2(data):
-    room = data['room']
-    session_id = data['session_id']
-    secret = data['secret']
-    
-    if room in game_sessions_2_2:
-        # Получаем роль игрока
-        role = None
-        for r, sid in room_roles[room].items():
-            if sid == session_id:
-                role = r
-                break
-                
-        if role:
-            game_sessions_2_2[room].set_secret(role, secret)
-            emit('secret_set', {'role': role, 'secret': secret}, room=room)
-            
-            # Проверяем можно ли начинать игру
-            game = game_sessions_2_2[room]
-            if game.secrets['player1'] and game.secrets['player2']:
-                emit('can_start_game', {}, room=room)
+@app.route('/game2/creator_2_2')
+def game_creator_2_2():
+    room = request.args.get('room')
+    return render_template('game2/creator_2_2.html', room=room, session=session)
 
 # Обработчики логики игры для режима 2.2
 @socketio.on('guess_logic_2_2')
@@ -600,28 +565,15 @@ def handle_guess_logic_2_2(data):
     session_id = data['session_id']
     message = data['message']
     
-    # Получаем роль спрашивающего
-    asker_role = None
-    for role, sid in room_roles[room].items():
-        if sid == session_id:
-            asker_role = role
-            break
-    
-    if not asker_role or room not in game_sessions_2_2:
+    if room_roles.get(room, {}).get('guesser') != session_id:
         return
     
-    game = game_sessions_2_2[room]
-    if game.current_player != asker_role:
-        emit('wrong_turn', {'message': 'Сейчас не ваш ход!'}, to=request.sid)
-        return
+    game = game_sessions_2_2.setdefault(room, Game2_2())
+    game.handle_question(message)
     
-    next_player = game.handle_question(asker_role, message)
-    
-    # Уведомляем другого игрока, что нужно ответить
-    other_player_sid = session_to_sid.get(room_roles[room][next_player])
-    if other_player_sid:
-        emit('need_answer_2_2', {'question': message}, to=other_player_sid)
-        emit('wait_turn', {'current_player': asker_role}, room=room, skip_sid=other_player_sid)
+    creator_sid = session_to_sid.get(room_roles[room]['creator'])
+    if creator_sid:
+        emit('need_answer_2_2', {'question': message}, to=creator_sid)
         
 @socketio.on('reply_logic_2_2')
 def handle_reply_logic_2_2(data):
@@ -630,14 +582,7 @@ def handle_reply_logic_2_2(data):
     answer = data['answer']
     secret = data.get('secret')
     
-    # Проверяем, что отправитель действительно player1 или player2
-    role = None
-    for r, sid in room_roles[room].items():
-        if sid == session_id:
-            role = r
-            break
-    
-    if not role:
+    if room_roles.get(room, {}).get('creator') != session_id:
         return
     
     game = game_sessions_2_2.setdefault(room, Game2_2())
@@ -646,21 +591,46 @@ def handle_reply_logic_2_2(data):
     
     result = game.apply_answer(answer)
     
-    # Определяем получателя ответа (другого игрока)
-    other_role = 'player2' if role == 'player1' else 'player1'
-    other_sid = session_to_sid.get(room_roles[room][other_role])
-    if not other_sid:
+    guesser_sid = session_to_sid.get(room_roles[room]['guesser'])
+    if not guesser_sid:
         return
     
     if 'dim' in result:
-        emit('filter_numbers_2_2', {'dim': result['dim'], 'for_player': other_role}, to=other_sid)
+        emit('filter_numbers_2_2', {'dim': result['dim']}, to=guesser_sid)
     elif 'guess' in result:
         emit('guess_result_2_2', {
             'correct': result['correct'],
-            'value': result['guess'],
-            'for_player': other_role
-        }, to=other_sid)
+            'value': result['guess']
+        }, to=guesser_sid)
+        
+@socketio.on('submit_number_2_2')
+def handle_submit_number(data):
+    room = data['room']
+    session_id = data['session_id']
+    number = data['number']
 
+    if room not in rooms:
+        return
+
+    # Найдём роль игрока по session_id
+    role = rooms[room].get('roles', {}).get(session_id)
+    if not role:
+        return
+
+    # Убедимся, что у комнаты есть подсловарь для чисел
+    if 'numbers' not in rooms[room]:
+        rooms[room]['numbers'] = {'guesser': None, 'creator': None}
+
+    rooms[room]['numbers'][role] = number
+
+    # Проверим, оба ли отправили число
+    numbers = rooms[room]['numbers']
+    both_ready = numbers['guesser'] is not None and numbers['creator'] is not None
+
+    emit('numbers_status_2_2', {
+        'both_ready': both_ready,
+        'your_number': number
+    }, room=room)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
