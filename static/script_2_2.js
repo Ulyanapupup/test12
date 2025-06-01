@@ -4,7 +4,7 @@ const room = window.room;
 const sessionId = window.session_id;
 
 let myRole = null;
-let currentRoles = { player1: null, player2: null };
+let currentRoles = {};
 let secrets = { player1: null, player2: null };
 
 // Подключение к комнате
@@ -17,8 +17,8 @@ socket.on('redirect_2_2', (data) => {
 
 socket.on('roles_updated_2_2', (data) => {
     console.log('Получены обновленные роли:', data);
-    currentRoles = data.roles || { player1: null, player2: null };
-    myRole = data.your_role || null;  // Добавьте эту строку
+    currentRoles = data.roles || {};
+    myRole = data.your_role || null;
     updateUI();
 });
 
@@ -47,13 +47,22 @@ function getRoleName(role) {
 
 function chooseRole(role) {
     if (myRole === role) return;
+    
+    const button = document.getElementById(`role-${role}`);
+    button.disabled = true;
+    button.textContent = 'Выбираем...';
+    
     socket.emit('select_role_2_2', { 
         room: room, 
         session_id: sessionId, 
         role: role 
+    }, (response) => {
+        button.textContent = role === 'player1' ? 'Игрок 1' : 'Игрок 2';
+        if (response && response.error) {
+            alert(response.error);
+            button.disabled = false;
+        }
     });
-    // Показать поле для ввода числа
-    document.getElementById('number-input').style.display = 'block';
 }
 
 function setSecretNumber() {
@@ -71,9 +80,9 @@ function setSecretNumber() {
 }
 
 function canStartGame() {
-    const roles = Object.values(currentRoles).filter(Boolean);
-    return roles.length === 2 && 
-           new Set(roles).size === 2 && // Убедимся, что роли разные
+    const players = Object.values(currentRoles);
+    return players.includes('player1') && 
+           players.includes('player2') &&
            secrets.player1 !== null && 
            secrets.player2 !== null;
 }

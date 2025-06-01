@@ -1,6 +1,6 @@
 import eventlet
 eventlet.monkey_patch()
-
+handle_select_role_2_2
 import os
 import uuid
 import random
@@ -502,59 +502,45 @@ def handle_select_role_2_2(data):
     
     if room not in rooms:
         emit('error', {'message': 'Комната не существует'}, to=session_id)
-        return
+        return {'error': 'Комната не существует'}
     
-    # Инициализация структуры roles если её нет
+    # Проверка, что роль не занята
+    for sid, existing_role in rooms[room].get('roles', {}).items():
+        if existing_role == role and sid != session_id:
+            emit('role_taken_2_2', {'role': role}, to=session_id)
+            return {'error': 'Роль уже занята'}
+    
+    # Сохраняем роль
     if 'roles' not in rooms[room]:
         rooms[room]['roles'] = {}
-    
-    # Освобождаем предыдущие роли этого игрока
-    for existing_session_id, existing_role in list(rooms[room]['roles'].items()):
-        if existing_session_id == session_id:
-            del rooms[room]['roles'][existing_session_id]
-    
-    # Проверяем, что роль не занята другим игроком
-    if role in rooms[room]['roles'].values():
-        emit('role_taken', {'role': role}, to=session_id)
-        return
-    
-    # Сохраняем роль игрока
     rooms[room]['roles'][session_id] = role
     
-    # Отправляем обновление ролей всем в комнате
+    # Отправляем обновление
     emit('roles_updated_2_2', {
         'roles': rooms[room]['roles'],
         'your_role': role
     }, room=room)
     
-    # Проверяем можно ли активировать кнопку "Играть"
-    if len(rooms[room]['roles']) == 2 and len(set(rooms[room]['roles'].values())) == 2:
-        emit('enable_start_button', {}, room=room)
+    return {'status': 'ok'}
     
 @socketio.on('start_game_2_2')
 def handle_start_game_2_2(data):
     room = data['room']
     
-    if room not in rooms or 'roles' not in rooms[room] or len(rooms[room]['roles']) != 2:
-        return {'status': 'error', 'message': 'Не все игроки выбрали роли'}
+    if room not in rooms or 'roles' not in rooms[room]:
+        return {'status': 'error', 'message': 'Комната не существует'}
     
     roles = rooms[room]['roles']
-    if len(set(roles.values())) != 2:
-        return {'status': 'error', 'message': 'Оба игрока должны выбрать разные роли!'}
+    if len(roles) != 2 or len(set(roles.values())) != 2:
+        return {'status': 'error', 'message': 'Оба игрока должны выбрать разные роли'}
     
-    player1_id = [sid for sid, role in roles.items() if role == 'player1'][0]
-    player2_id = [sid for sid, role in roles.items() if role == 'player2'][0]
+    # Проверка загаданных чисел
+    if not all(secrets.values()):
+        return {'status': 'error', 'message': 'Оба игрока должны загадать числа'}
     
-    player1_sid = session_to_sid.get(player1_id)
-    player2_sid = session_to_sid.get(player2_id)
-    
-    if not player1_sid or not player2_sid:
-        return {'status': 'error', 'message': 'Один из игроков отключён'}
-    
+    # Запуск игры
     game_sessions_2_2[room] = Game2_2()
-    
-    emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, to=player1_sid)
-    emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, to=player2_sid)
+    emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, room=room)
     
     return {'status': 'ok'}
         
