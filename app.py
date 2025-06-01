@@ -567,7 +567,7 @@ def game_creator_2_2():
     return render_template('game2/creator_2_2.html', room=room, session=session)
 
 # Обработчики логики игры для режима 2.2
-@@socketio.on('guess_logic_2_2')
+@socketio.on('guess_logic_2_2')
 def handle_guess_logic_2_2(data):
     room = data['room']
     session_id = data['session_id']
