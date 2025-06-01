@@ -1,6 +1,6 @@
 import eventlet
 eventlet.monkey_patch()
-handle_select_role_2_2
+
 import os
 import uuid
 import random
