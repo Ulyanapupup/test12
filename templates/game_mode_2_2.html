@@ -85,8 +85,15 @@
   
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
-    window.session_id = "{{ session['session_id'] }}";
-    window.room = "{{ room }}";
+	window.session_id = "{{ session['session_id'] }}";
+	window.room = "{{ room }}";
+
+	// Явно указываем URL для Socket.IO
+	const socket = io({
+	transports: ['websocket'],
+	upgrade: false,
+	path: '/socket.io'
+	});
   </script>
   <script src="{{ url_for('static', filename='script_2_2.js') }}"></script>
 </body>

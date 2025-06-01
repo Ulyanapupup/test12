@@ -17,7 +17,11 @@ from game_logic.mode_2_2 import Game2_2
 
 app = Flask(__name__)
 app.secret_key = 'some_secret_key'  # для сессий
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, 
+                   cors_allowed_origins="*",
+                   async_mode='eventlet',
+                   engineio_logger=True,
+                   logger=True)
 
 games = {}  # хранилище активных игр для режима 1.2: {game_id: Game}
 
@@ -39,7 +43,6 @@ rooms = {}
 
 session_to_sid = {}  # сопоставление session_id -> socket.id
 
-
 def generate_session_id():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=16))
 
@@ -47,6 +50,12 @@ def generate_session_id():
 def make_session_permanent():
     if 'session_id' not in session:
         session['session_id'] = generate_session_id()
+        
+@app.before_request
+def handle_before_request():
+    if request.path.startswith('/socket.io'):
+        # Для запросов Socket.IO пропускаем CSRF проверки
+        return
 
 # --- Маршруты ---
 
