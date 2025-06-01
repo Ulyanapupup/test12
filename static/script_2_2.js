@@ -18,6 +18,7 @@ socket.on('redirect_2_2', (data) => {
 socket.on('roles_updated_2_2', (data) => {
     console.log('Получены обновленные роли:', data);
     currentRoles = data.roles || { player1: null, player2: null };
+    myRole = data.your_role || null;  // Добавьте эту строку
     updateUI();
 });
 
@@ -33,6 +34,10 @@ socket.on('role_taken_2_2', (data) => {
 socket.on('player_left', () => {
     alert('Другой игрок покинул игру. Вы будете перенаправлены в комнату.');
     window.location.href = `/game?room=${room}`;
+});
+
+socket.on('enable_start_button', () => {
+    updateUI(); // Это активирует кнопку, если условия выполнены
 });
 
 // Вспомогательные функции
@@ -66,11 +71,11 @@ function setSecretNumber() {
 }
 
 function canStartGame() {
-    return currentRoles.player1 && 
-           currentRoles.player2 && 
-           currentRoles.player1 !== currentRoles.player2 &&
-           secrets.player1 && 
-           secrets.player2;
+    const roles = Object.values(currentRoles).filter(Boolean);
+    return roles.length === 2 && 
+           new Set(roles).size === 2 && // Убедимся, что роли разные
+           secrets.player1 !== null && 
+           secrets.player2 !== null;
 }
 
 function updateUI() {
@@ -110,6 +115,14 @@ function updateUI() {
 
 function startGame() {
     if (canStartGame()) {
+		const issues = [];
+		if (!currentRoles.player1 || !currentRoles.player2) issues.push("не все роли выбраны");
+		if (currentRoles.player1 === currentRoles.player2) issues.push("роли должны быть разными");
+		if (!secrets.player1 || !secrets.player2) issues.push("не все числа загаданы");
+		
+		alert(`Нельзя начать игру: ${issues.join(", ")}`);
+		return;
+	
         console.log('Attempting to start 2.2 game in room:', room);
         
         socket.emit('start_game_2_2', { room }, (response) => {
