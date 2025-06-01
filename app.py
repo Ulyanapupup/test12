@@ -217,7 +217,6 @@ def on_choose_mode(data):
             game_sessions[room] = Game2_1()
             emit('start_game', {'room': room, 'mode': mode}, room=room)
         elif mode == '2.2':
-            game_sessions_2_2[room] = Game2_2()
             emit('start_game_2_2', {'room': room, 'mode': mode}, room=room)
 
 @socketio.on('disconnect')
@@ -479,19 +478,21 @@ def handle_reply_logic(data):
 def handle_join_game_room_2_2(data):
     room = data['room']
     session_id = data['session_id']
-    sid = request.sid
-
+    
     join_room(room)
-    session_to_sid[session_id] = sid  # сохраняем socket.id
-
+    session_to_sid[session_id] = request.sid
+    
     # Инициализация комнаты если её нет
     if room not in room_roles:
         room_roles[room] = {'guesser': None, 'creator': None}
-
+    
+    # Вызываем join_game из mode_2_2
+    join_game({"room": room})
+    
     emit('roles_updated_2_2', {
         'roles': room_roles[room],
         'your_role': next((role for role, sid in room_roles[room].items() if sid == session_id), None)
-    }, to=sid)
+    }, room=room)
     
 @socketio.on('select_role_2_2')
 def handle_select_role_2_2(data):
@@ -567,46 +568,43 @@ def handle_guess_logic_2_2(data):
     message = data['message']
     
     # Проверяем роль отправителя
-    if room in room_roles:
-        if room_roles[room]['guesser'] == session_id:
-            role = 'guesser'
-        elif room_roles[room]['creator'] == session_id:
-            role = 'creator'
-        else:
-            return
-    
-    # Передаем данные в модуль mode_2_2
-    data_with_room = {
-        "room": room,
-        "session_id": session_id,
-        "message": message
-    }
-    handle_guess(data_with_room)
+    if room in room_roles and room_roles[room]['guesser'] == session_id:
+        handle_guess({
+            "room": room,
+            "session_id": session_id,
+            "message": message
+        })
         
 @socketio.on('reply_logic_2_2')
 def handle_reply_logic_2_2(data):
     room = data['room']
     session_id = data['session_id']
-    answer = data.get('answer')
-    secret = data.get('secret')
     
-    # Проверяем роль отправителя
-    if room in room_roles:
-        if room_roles[room]['guesser'] == session_id:
-            role = 'guesser'
-        elif room_roles[room]['creator'] == session_id:
-            role = 'creator'
-        else:
-            return
+    # Проверяем, что отправитель - создатель
+    if room in room_roles and room_roles[room]['creator'] == session_id:
+        reply_data = {
+            "room": room,
+            "session_id": session_id
+        }
+        
+        if 'answer' in data:
+            reply_data['answer'] = data['answer']
+        if 'secret' in data:
+            reply_data['secret'] = data['secret']
+            
+        handle_reply(reply_data)
+        
+@socketio.on('set_secret_2_2')
+def handle_set_secret_2_2(data):
+    room = data['room']
+    session_id = data['session_id']
+    secret = data['secret']
     
-    # Передаем данные в модуль mode_2_2
-    data_with_room = {
-        "room": room,
-        "session_id": session_id,
-        "answer": answer,
-        "secret": secret
-    }
-    handle_reply(data_with_room)
+    if room in room_roles and room_roles[room]['creator'] == session_id:
+        set_secret({
+            "session_id": session_id,
+            "secret": secret
+        })
 
 
 if __name__ == '__main__':
