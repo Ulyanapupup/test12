@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Игрок {{ player }}</title>
+  <style>
+    body {
+      display: flex;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      height: 100vh;
+    }
+
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #ccc;
+      padding: 10px;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      background: #f9f9f9;
+      padding: 10px;
+      border: 1px solid #ddd;
+      margin-bottom: 10px;
+    }
+
+    .message {
+      margin-bottom: 8px;
+    }
+
+    .input-area {
+      display: flex;
+    }
+
+    .input-area input {
+      flex: 1;
+      padding: 8px;
+      font-size: 16px;
+    }
+
+    .input-area button {
+      padding: 8px 12px;
+      font-size: 16px;
+    }
+
+    .number-panel {
+      width: 300px;
+      padding: 10px;
+      background-color: #f0f4f7;
+      overflow-y: auto;
+    }
+
+    .number-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .number {
+      width: 40px;
+      height: 30px;
+      text-align: center;
+      line-height: 30px;
+      background-color: #ffffff;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+
+    .number.dimmed {
+      background-color: #eee;
+      color: #aaa;
+      text-decoration: line-through;
+      cursor: not-allowed;
+    }
+
+    .pagination {
+      margin-top: 10px;
+      text-align: center;
+    }
+
+    .pagination button {
+      margin: 0 5px;
+    }
+
+    .turn-indicator {
+      padding: 10px;
+      background-color: #4CAF50;
+      color: white;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="turn-indicator" id="turn-indicator"></div>
+    <div class="messages" id="messages"></div>
+    <div class="input-area">
+      <input type="text" id="chat-input" placeholder="Задайте вопрос...">
+      <button onclick="sendMessage()">Отправить</button>
+    </div>
+  </div>
+
+  <div class="number-panel">
+    <h3>Диапазон: -1000 до 1000</h3>
+    <div id="number-grid" class="number-grid"></div>
+    <div class="pagination">
+      <button onclick="prevPage()">◀</button>
+      <span id="page-number">1</span>
+      <button onclick="nextPage()">▶</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script>
+    const messagesDiv = document.getElementById("messages");
+    const chatInput = document.getElementById("chat-input");
+    const numberGrid = document.getElementById("number-grid");
+    const pageSpan = document.getElementById("page-number");
+    const turnIndicator = document.getElementById("turn-indicator");
+
+    let currentPage = 0;
+    const allNumbers = Array.from({ length: 2001 }, (_, i) => i - 1000);
+    let dimmedNumbers = new Set();
+    let isMyTurn = false;
+
+    // Эти значения будут подставлены Flask'ом
+    const sessionId = "{{ session['session_id'] }}";
+    const room = "{{ room }}";
+    const player = parseInt("{{ player }}");
+
+    // Инициализация Socket.IO
+    const socket = io();
+    socket.emit("join_game_room_2_2", { room, session_id: sessionId });
+
+    function renderPage() {
+      numberGrid.innerHTML = "";
+      const half = allNumbers.length / 2;
+      const start = currentPage * half;
+      const end = start + half;
+      const pageNumbers = allNumbers.slice(start, end);
+
+      for (const num of pageNumbers) {
+        const el = document.createElement("div");
+        el.className = "number";
+        if (dimmedNumbers.has(num)) {
+          el.classList.add("dimmed");
+        }
+        el.textContent = num;
+        numberGrid.appendChild(el);
+      }
+
+      pageSpan.textContent = currentPage + 1;
+    }
+
+    function nextPage() {
+      if (currentPage < 1) {
+        currentPage++;
+        renderPage();
+      }
+    }
+
+    function prevPage() {
+      if (currentPage > 0) {
+        currentPage--;
+        renderPage();
+      }
+    }
+
+    function updateTurnIndicator() {
+      if (isMyTurn) {
+        turnIndicator.textContent = "Ваш ход - задайте вопрос";
+        chatInput.disabled = false;
+      } else {
+        turnIndicator.textContent = "Ход другого игрока - ожидайте ответа";
+        chatInput.disabled = true;
+      }
+    }
+
+    function sendMessage() {
+      const msg = chatInput.value.trim();
+      if (!msg) return;
+
+      if (isMyTurn) {
+        // Если это наш ход, отправляем вопрос
+        socket.emit("question_2_2", {
+          room: room,
+          session_id: sessionId,
+          player: player,
+          message: msg
+        });
+        
+        addMessage(`Игрок ${player}`, msg);
+        isMyTurn = false;
+        updateTurnIndicator();
+      } else {
+        // Если не наш ход, но мы отвечаем на вопрос
+        socket.emit("answer_2_2", {
+          room: room,
+          session_id: sessionId,
+          player: player,
+          answer: msg.toLowerCase()
+        });
+        
+        addMessage(`Игрок ${player}`, msg);
+      }
+      
+      chatInput.value = "";
+    }
+
+    function addMessage(sender, text) {
+      const div = document.createElement("div");
+      div.className = "message";
+      div.textContent = `${sender}: ${text}`;
+      messagesDiv.appendChild(div);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Обработчики событий Socket.IO
+    socket.on("turn_update", (data) => {
+      isMyTurn = (data.currentPlayer === player);
+      updateTurnIndicator();
+    });
+
+    socket.on("filter_numbers_2_2", (data) => {
+      if (data.player === player) {
+        const dimList = new Set(data.dim);
+        dimmedNumbers = new Set([...dimmedNumbers, ...dimList]);
+        renderPage();
+      }
+    });
+
+    socket.on("guess_result_2_2", (data) => {
+      const overlay = document.createElement('div');
+      overlay.style.position = 'fixed';
+      overlay.style.top = 0;
+      overlay.style.left = 0;
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.style.background = 'rgba(0,0,0,0.8)';
+      overlay.style.color = 'white';
+      overlay.style.fontSize = '32px';
+      overlay.style.display = 'flex';
+      overlay.style.justifyContent = 'center';
+      overlay.style.alignItems = 'center';
+      overlay.style.zIndex = 1000;
+      overlay.innerText = data.correct
+        ? `✅ Игрок ${data.player} угадал число ${data.value}!`
+        : `❌ Игрок ${data.player} ошибся (это не ${data.value})`;
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.remove(), 3000);
+    });
+
+    socket.on("chat_message", (data) => {
+      if (data.sender !== player) {
+        addMessage(`Игрок ${data.sender}`, data.message);
+      }
+    });
+
+    // Инициализация
+    renderPage();
+    updateTurnIndicator();
+
+    chatInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") sendMessage();
+    });
+  </script>
+</body>
+</html>
