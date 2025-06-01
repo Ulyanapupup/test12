@@ -100,6 +100,11 @@ function updateUI() {
     
     if (startBtn) {
         startBtn.disabled = !canStartGame();
+        if (!startBtn.disabled) {
+            startBtn.style.backgroundColor = '#4CAF50';
+        } else {
+            startBtn.style.backgroundColor = '#cccccc';
+        }
     }
 }
 

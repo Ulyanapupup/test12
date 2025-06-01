@@ -487,7 +487,7 @@ def handle_join_game_room_2_2(data):
 
     # Инициализация комнаты если её нет
     if room not in room_roles:
-        room_roles[room] = {'guesser': None, 'creator': None}
+        room_roles[room] = {'player1': None, 'player2': None}
 
     emit('roles_updated_2_2', {
         'roles': room_roles[room],
@@ -638,7 +638,14 @@ def handle_reply_logic_2_2(data):
     answer = data['answer']
     secret = data.get('secret')
     
-    if room_roles.get(room, {}).get('creator') != session_id:
+    # Проверяем, что отправитель действительно player1 или player2
+    role = None
+    for r, sid in room_roles[room].items():
+        if sid == session_id:
+            role = r
+            break
+    
+    if not role:
         return
     
     game = game_sessions_2_2.setdefault(room, Game2_2())
@@ -647,17 +654,20 @@ def handle_reply_logic_2_2(data):
     
     result = game.apply_answer(answer)
     
-    guesser_sid = session_to_sid.get(room_roles[room]['guesser'])
-    if not guesser_sid:
+    # Определяем получателя ответа (другого игрока)
+    other_role = 'player2' if role == 'player1' else 'player1'
+    other_sid = session_to_sid.get(room_roles[room][other_role])
+    if not other_sid:
         return
     
     if 'dim' in result:
-        emit('filter_numbers_2_2', {'dim': result['dim']}, to=guesser_sid)
+        emit('filter_numbers_2_2', {'dim': result['dim'], 'for_player': other_role}, to=other_sid)
     elif 'guess' in result:
         emit('guess_result_2_2', {
             'correct': result['correct'],
-            'value': result['guess']
-        }, to=guesser_sid)
+            'value': result['guess'],
+            'for_player': other_role
+        }, to=other_sid)
 
 
 if __name__ == '__main__':
