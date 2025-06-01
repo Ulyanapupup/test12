@@ -24,6 +24,13 @@ def handle_guess(data):
     session_secrets[session_id]["last_question"] = message
 
     numbers = list(range(-100, 101))
+    
+    # Сохраняем последний вопрос независимо от роли
+    if session_id not in session_secrets:
+        session_secrets[session_id] = {}
+
+    session_secrets[session_id]["last_question"] = message
+
 
     # Разбор вопроса
     match = re.search(r"число\s*(?:равно|это)\s*(-?\d+)", message)
@@ -97,8 +104,13 @@ def handle_reply(data):
                 to_dim = [n for n in numbers if n < val]
 
         if to_dim:
+            # Отправляем обоим игрокам
             emit("filter_numbers_2_2", {
                 "target": "guesser",
+                "dim": to_dim
+            }, room=room)
+            emit("filter_numbers_2_2", {
+                "target": "creator",
                 "dim": to_dim
             }, room=room)
 

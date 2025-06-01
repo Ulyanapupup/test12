@@ -1,6 +1,6 @@
 import eventlet
 eventlet.monkey_patch()
-
+handle_guess_logic_2_2
 import os
 import uuid
 import random
@@ -568,7 +568,8 @@ def handle_guess_logic_2_2(data):
     message = data['message']
     
     # Проверяем роль отправителя
-    if room in room_roles and room_roles[room]['guesser'] == session_id:
+    if room in room_roles:
+    if session_id in room_roles[room].values():  # проверяем, что игрок — либо guesser, либо creator
         handle_guess({
             "room": room,
             "session_id": session_id,
