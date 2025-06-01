@@ -569,12 +569,12 @@ def handle_guess_logic_2_2(data):
     
     # Проверяем роль отправителя
     if room in room_roles:
-    if session_id in room_roles[room].values():  # проверяем, что игрок — либо guesser, либо creator
-        handle_guess({
-            "room": room,
-            "session_id": session_id,
-            "message": message
-        })
+        if session_id in room_roles[room].values():  # проверяем, что игрок — либо guesser, либо creator
+            handle_guess({
+                "room": room,
+                "session_id": session_id,
+                "message": message
+            })
         
 @socketio.on('reply_logic_2_2')
 def handle_reply_logic_2_2(data):
