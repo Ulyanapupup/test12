@@ -573,6 +573,8 @@ def handle_guess_logic_2_2(data):
     session_id = data['session_id']
     message = data['message']
     
+    print(f"Guess logic 2.2 received: {data}")  # Логирование
+    
     # Определяем роль отправителя
     if room in room_roles:
         if room_roles[room]['guesser'] == session_id:
@@ -598,7 +600,7 @@ def handle_reply_logic_2_2(data):
     answer = data.get('answer')
     secret = data.get('secret')
     
-    print(f"Reply logic received - room: {room}, session: {session_id}, answer: {answer}, secret: {secret}")  # Логирование
+    print(f"Reply logic 2.2 received: {data}")  # Логирование
     
     # Определяем роль отправителя
     if room in room_roles:
@@ -612,12 +614,12 @@ def handle_reply_logic_2_2(data):
     game = game_sessions_2_2.setdefault(room, Game2_2())
     
     if secret is not None:
-        print(f"Setting secret for {role}: {secret}")  # Логирование
+        print(f"Setting secret for {role}: {secret}")
         game.set_secret(role, secret)
     
     if answer is not None:
         result = game.apply_answer(role, answer)
-        print(f"Result from apply_answer: {result}")  # Логирование
+        print(f"Result from apply_answer: {result}")
         
         # Отправляем результат другому игроку
         other_role = 'creator' if role == 'guesser' else 'guesser'
@@ -626,7 +628,7 @@ def handle_reply_logic_2_2(data):
             return
         
         if 'dim' in result:
-            print(f"Sending dim numbers to {other_role}: {result['dim']}")  # Логирование
+            print(f"Sending dim numbers to {other_role}: {result['dim']}")
             emit('filter_numbers_2_2', {
                 'dim': result['dim'],
                 'target': result['target']

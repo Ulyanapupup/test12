@@ -123,7 +123,7 @@
 
     function confirmNumber() {
       const num = parseInt(document.getElementById("secret-number").value);
-      if (num >= -1000 && num <= 1000) {
+      if (num >= -100 && num <= 100) {
         secret = num;
         statusP.textContent = `Вы загадали: ${secret}`;
         socket.emit("reply_logic_2_2", {
@@ -132,7 +132,7 @@
           secret: secret
         });
       } else {
-        alert("Введите число в диапазоне -1000 до 1000");
+        alert("Введите число в диапазоне -100 до 100");
       }
     }
 
@@ -177,11 +177,13 @@
 
       addMessage("Вы", msg);
       
-      if (msg.match(/больше|меньше|это число/i)) {
-        socket.emit("guess_logic_2_2", {
+      // Отправляем ответ на вопрос
+      if (secret !== null) {
+        socket.emit("reply_logic_2_2", {
           room: room,
           session_id: sessionId,
-          message: msg
+          answer: msg.toLowerCase(),  // "да" или "нет"
+          secret: secret  // Всегда отправляем секрет
         });
       }
       
