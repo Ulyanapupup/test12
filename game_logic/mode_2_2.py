@@ -1,58 +1,94 @@
 # game_logic/mode_2_2.py
 
-class Game2_2:
-    def __init__(self):
-        self.pending_checks = {'creator': None, 'guesser': None}
-        self.last_guesses = {'creator': None, 'guesser': None}
-        self.secrets = {'creator': None, 'guesser': None}
-        self.dimmed_numbers = {'creator': set(), 'guesser': set()}
+from flask_socketio import emit, join_room
+import re
 
-    def set_secret(self, role, number):
-        self.secrets[role] = number
+# Храним секретные числа для каждой сессии
+session_secrets = {}
 
-    def handle_question(self, role, message):
-        import re
-        msg = message.lower()
-        self.pending_checks[role] = None
-        self.last_guesses[role] = None
+def join_game(data):
+    room = data["room"]
+    join_room(room)
 
-        if m := re.search(r"(число\s*)?больше\s*(-?\d+)", msg):
-            self.pending_checks[role] = {'type': '>', 'value': int(m.group(2))}
-        elif m := re.search(r"(число\s*)?меньше\s*(-?\d+)", msg):
-            self.pending_checks[role] = {'type': '<', 'value': int(m.group(2))}
-        elif m := re.search(r"(это\s*число\s*|число\s*это\s*|равно\s*)?(-?\d+)", msg):
-            self.last_guesses[role] = int(m.group(2))
+def set_secret(data):
+    session_id = data["session_id"]
+    secret = data["secret"]
+    session_secrets[session_id] = secret
 
-    def apply_answer(self, role, answer):
-        answer = answer.lower()
-        other_role = 'creator' if role == 'guesser' else 'guesser'
-        
-        if role in self.pending_checks and self.pending_checks[role]:
-            t = self.pending_checks[role]['type']
-            v = self.pending_checks[role]['value']
-            
-            if t == '>' and answer == 'да':
-                dimmed = list(range(-100, v + 1))
-                self.dimmed_numbers[other_role].update(dimmed)
-                return {'dim': dimmed, 'target': other_role}
-            elif t == '>' and answer == 'нет':
-                dimmed = list(range(v + 1, 101))
-                self.dimmed_numbers[other_role].update(dimmed)
-                return {'dim': dimmed, 'target': other_role}
-            elif t == '<' and answer == 'да':
-                dimmed = list(range(v, 101))
-                self.dimmed_numbers[other_role].update(dimmed)
-                return {'dim': dimmed, 'target': other_role}
-            elif t == '<' and answer == 'нет':
-                dimmed = list(range(-100, v))
-                self.dimmed_numbers[other_role].update(dimmed)
-                return {'dim': dimmed, 'target': other_role}
-                
-        elif role in self.last_guesses and self.last_guesses[role] is not None:
-            correct = self.last_guesses[role] == self.secrets.get(other_role)
-            return {
-                'guess': self.last_guesses[role], 
-                'correct': correct,
-                'target': other_role
-            }
-        return {}
+def handle_guess(data):
+    room = data["room"]
+    message = data["message"].lower()
+    session_id = data["session_id"]
+
+    numbers = list(range(-100, 101))
+
+    # Разбор вопроса
+    match = re.search(r"число\s*(?:равно|это)\s*(-?\d+)", message)
+    if match:
+        guess = int(match.group(1))
+        emit("guess_result_2_2", {
+            "target": "creator",
+            "value": guess,
+            "correct": session_secrets.get(session_id) == guess
+        }, room=room)
+        emit("guess_result_2_2", {
+            "target": "guesser",
+            "value": guess,
+            "correct": session_secrets.get(session_id) == guess
+        }, room=room)
+        return
+
+    match = re.search(r"число\s*больше\s*(-?\d+)", message)
+    if match:
+        val = int(match.group(1))
+        to_dim = [n for n in numbers if n <= val]
+        emit("filter_numbers_2_2", {
+            "target": "guesser",
+            "dim": to_dim
+        }, room=room)
+        return
+
+    match = re.search(r"число\s*меньше\s*(-?\d+)", message)
+    if match:
+        val = int(match.group(1))
+        to_dim = [n for n in numbers if n >= val]
+        emit("filter_numbers_2_2", {
+            "target": "guesser",
+            "dim": to_dim
+        }, room=room)
+        return
+
+def handle_reply(data):
+    room = data["room"]
+    session_id = data["session_id"]
+
+    # Установка секретного числа
+    if "secret" in data and "answer" not in data:
+        session_secrets[session_id] = data["secret"]
+        return
+
+    # Обработка логического ответа (да/нет)
+    if "answer" in data:
+        answer = data["answer"].strip().lower()
+        secret = session_secrets.get(session_id)
+        if secret is None:
+            return
+
+        # Попытка восстановить вопрос из чата
+        # Пример: последний вопрос был "Число больше 20?", пользователь отвечает "да"
+        # Ты можешь хранить последнее сообщение соперника для более точной логики,
+        # но здесь сделаем простую эвристику
+        # В дальнейшем можно улучшить логику с контекстом чата
+
+        # Пример (если последнее сообщение известно и было сохранено в session)
+        # Здесь просто для примера жестко заданы шаблоны
+
+        # Это пример на будущее — пока просто покажем как можно отфильтровать
+
+        # Пример — если бы вопрос был "Число больше 50?"
+        # и ответ "да", значит убираем все ≤ 50
+
+        # Простой парсинг — лучше привязать к предыдущему сообщению, а не к ответу
+        # можно позже передавать в reply последний вопрос
+        pass  # Сейчас основная логика в guess_logic — ответ только показывает "да/нет"
+

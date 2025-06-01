@@ -13,7 +13,7 @@ from game_logic import mode_1_1
 from game_logic.mode_1_2 import Game  # импорт класса Game из mode_1_2
 
 from game_logic.mode_2_1 import Game2_1
-from game_logic.mode_2_2 import Game2_2
+from game_logic.mode_2_2 import join_game, set_secret, handle_guess, handle_reply
 
 app = Flask(__name__)
 app.secret_key = 'some_secret_key'  # для сессий
@@ -24,7 +24,6 @@ games = {}  # хранилище активных игр для режима 1.2
 room_roles = {}  # {room_code: {'guesser': session_id, 'creator': session_id}}
 
 game_sessions = {}  # {'ROOM123': Game2_1()}
-game_sessions_2_2 = {}
 
 # Хранилище комнат для сетевой игры режимов 2.1 и 2.2
 rooms = {}
@@ -542,13 +541,7 @@ def handle_start_game_2_2(data):
         if not guesser_sid or not creator_sid:
             return {'status': 'error', 'message': 'Один из игроков отключён'}
         
-        game_sessions_2_2[room] = Game2_2()
-        
-        # Добавьте логирование
-        print(f"Starting game 2.2 in room {room}")
-        print(f"Guesser: {guesser_id}, Creator: {creator_id}")
-        
-        # Отправляем редирект
+        # Инициализация игры (теперь без создания экземпляра класса)
         emit('redirect_2_2', {'url': f'/game2/guesser_2_2?room={room}'}, to=guesser_sid)
         emit('redirect_2_2', {'url': f'/game2/creator_2_2?room={room}'}, to=creator_sid)
         
@@ -573,9 +566,7 @@ def handle_guess_logic_2_2(data):
     session_id = data['session_id']
     message = data['message']
     
-    print(f"Guess logic 2.2 received: {data}")
-    
-    # Определяем роль отправителя
+    # Проверяем роль отправителя
     if room in room_roles:
         if room_roles[room]['guesser'] == session_id:
             role = 'guesser'
@@ -584,14 +575,13 @@ def handle_guess_logic_2_2(data):
         else:
             return
     
-    game = game_sessions_2_2.setdefault(room, Game2_2())
-    game.handle_question(role, message)
-    
-    # Уведомляем другого игрока, что нужно ответить
-    other_role = 'creator' if role == 'guesser' else 'guesser'
-    other_sid = session_to_sid.get(room_roles[room][other_role])
-    if other_sid:
-        emit('need_answer_2_2', {'question': message}, to=other_sid)
+    # Передаем данные в модуль mode_2_2
+    data_with_room = {
+        "room": room,
+        "session_id": session_id,
+        "message": message
+    }
+    handle_guess(data_with_room)
         
 @socketio.on('reply_logic_2_2')
 def handle_reply_logic_2_2(data):
@@ -600,9 +590,7 @@ def handle_reply_logic_2_2(data):
     answer = data.get('answer')
     secret = data.get('secret')
     
-    print(f"Reply logic 2.2 received: {data}")  # Логирование
-    
-    # Определяем роль отправителя
+    # Проверяем роль отправителя
     if room in room_roles:
         if room_roles[room]['guesser'] == session_id:
             role = 'guesser'
@@ -611,34 +599,14 @@ def handle_reply_logic_2_2(data):
         else:
             return
     
-    game = game_sessions_2_2.setdefault(room, Game2_2())
-    
-    if secret is not None:
-        print(f"Setting secret for {role}: {secret}")
-        game.set_secret(role, secret)
-    
-    if answer is not None:
-        result = game.apply_answer(role, answer)
-        print(f"Result from apply_answer: {result}")
-        
-        # Отправляем результат другому игроку
-        other_role = 'creator' if role == 'guesser' else 'guesser'
-        other_sid = session_to_sid.get(room_roles[room][other_role])
-        if not other_sid:
-            return
-        
-        if 'dim' in result:
-            print(f"Sending dim numbers to {other_role}: {result['dim']}")
-            emit('filter_numbers_2_2', {
-                'dim': result['dim'],
-                'target': result['target']
-            }, to=other_sid)
-        elif 'guess' in result:
-            emit('guess_result_2_2', {
-                'correct': result['correct'],
-                'value': result['guess'],
-                'target': result['target']
-            }, to=other_sid)
+    # Передаем данные в модуль mode_2_2
+    data_with_room = {
+        "room": room,
+        "session_id": session_id,
+        "answer": answer,
+        "secret": secret
+    }
+    handle_reply(data_with_room)
 
 
 if __name__ == '__main__':
