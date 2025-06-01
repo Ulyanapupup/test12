@@ -11,7 +11,6 @@
       height: 100vh;
     }
 
-    /* Чат */
     .chat-container {
       flex: 1;
       display: flex;
@@ -48,18 +47,21 @@
       font-size: 16px;
     }
 
-    /* Панель угадывающего */
-    .number-panel {
+    .panel {
       width: 300px;
       padding: 10px;
       background-color: #f0f4f7;
-      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
     }
 
     .number-grid {
       display: flex;
       flex-wrap: wrap;
       gap: 4px;
+      margin-top: 10px;
+      max-height: 300px;
+      overflow-y: auto;
     }
 
     .number {
@@ -74,18 +76,18 @@
 
     .number.dimmed {
       background-color: #eee;
-		color: #aaa;
-		text-decoration: line-through;
-		cursor: not-allowed;
+      color: #aaa;
+      text-decoration: line-through;
+      cursor: not-allowed;
+    }
+
+    .secret-input {
+      margin-top: 10px;
     }
 
     .pagination {
       margin-top: 10px;
       text-align: center;
-    }
-
-    .pagination button {
-      margin: 0 5px;
     }
   </style>
 </head>
@@ -98,36 +100,61 @@
     </div>
   </div>
 
-  <div class="number-panel">
-    <h3>Диапазон: -1000 до 1000</h3>
-    <div id="number-grid" class="number-grid"></div>
-    <div class="pagination">
-      <button onclick="prevPage()">◀</button>
-      <span id="page-number">1</span>
-      <button onclick="nextPage()">▶</button>
+  <div class="panel">
+    <h3>Ты — Угадывающий</h3>
+    
+    <div class="secret-input">
+      <p>Загадай число от -1000 до 1000:</p>
+      <input type="number" id="secret-number" value="0" min="-1000" max="1000">
+      <button onclick="confirmNumber()">Подтвердить</button>
+      <p id="status"></p>
+    </div>
+
+    <div>
+      <h4>Числа загадывающего:</h4>
+      <div id="number-grid" class="number-grid"></div>
+      <div class="pagination">
+        <button onclick="prevPage()">◀</button>
+        <span id="page-number">1</span>
+        <button onclick="nextPage()">▶</button>
+      </div>
     </div>
   </div>
 
-  <!-- Подключаем Socket.IO -->
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
     const messagesDiv = document.getElementById("messages");
     const chatInput = document.getElementById("chat-input");
+    const statusP = document.getElementById("status");
     const numberGrid = document.getElementById("number-grid");
     const pageSpan = document.getElementById("page-number");
 
     let currentPage = 0;
-    const allNumbers = Array.from({ length: 2001 }, (_, i) => i - 1000);
     let dimmedNumbers = new Set();
+    let secret = null;
 
-    function renderPage() {
+    function confirmNumber() {
+      const num = parseInt(document.getElementById("secret-number").value);
+      if (num >= -1000 && num <= 1000) {
+        secret = num;
+        statusP.textContent = `Вы загадали: ${secret}`;
+        socket.emit("reply_logic_2_2", {
+          room: room,
+          session_id: sessionId,
+          secret: secret
+        });
+      } else {
+        alert("Введите число в диапазоне -1000 до 1000");
+      }
+    }
+
+    function renderNumbers() {
       numberGrid.innerHTML = "";
-      const half = allNumbers.length / 2;
-      const start = currentPage * half;
-      const end = start + half;
-      const pageNumbers = allNumbers.slice(start, end);
-
-      for (const num of pageNumbers) {
+      const numbers = Array.from({ length: 21 }, (_, i) => i - 10 + (currentPage * 20));
+      
+      for (const num of numbers) {
+        if (num < -1000 || num > 1000) continue;
+        
         const el = document.createElement("div");
         el.className = "number";
         if (dimmedNumbers.has(num)) {
@@ -136,64 +163,57 @@
         el.textContent = num;
         numberGrid.appendChild(el);
       }
-
+      
       pageSpan.textContent = currentPage + 1;
     }
 
     function nextPage() {
-      if (currentPage < 1) {
+      if (currentPage < 100) {
         currentPage++;
-        renderPage();
+        renderNumbers();
       }
     }
 
     function prevPage() {
       if (currentPage > 0) {
         currentPage--;
-        renderPage();
+        renderNumbers();
       }
     }
 
-    renderPage();
-
-    // --- ЧАТ ЧЕРЕЗ SOCKET.IO ---
+    // --- Socket.IO ---
     const socket = io();
-	// Эти значения будут подставлены Flask'ом
     const sessionId = "{{ session['session_id'] }}";
     const room = "{{ room }}";
-	const role = "guesser";
-	
-	// После socket = io();
-	socket.emit("join_game_room", {
-	  room: room,
-	  session_id: sessionId
-	});
+    const role = "guesser";
+    
+    socket.emit("join_game_room_2_2", {
+      room: room,
+      session_id: sessionId
+    });
 
-    // Инициализация чата
-	function sendMessage() {
-		const msg = chatInput.value.trim();
-		if (!msg) return;
+    function sendMessage() {
+      const msg = chatInput.value.trim();
+      if (!msg) return;
 
-		// Отправляем сообщение в чат
-		socket.emit("chat_message", {
-			room: room,
-			session_id: sessionId,
-			message: msg
-		});
+      socket.emit("chat_message", {
+        room: room,
+        session_id: sessionId,
+        message: msg
+      });
 
-		addMessage("Вы", msg);
-		
-		// Если это специальный вопрос - отправляем на обработку
-		if (msg.match(/больше|меньше|это число/i)) {
-			socket.emit("guess_logic_2_2", {
-				room: room,
-				session_id: sessionId,
-				message: msg
-			});
-		}
-		
-		chatInput.value = "";
-	}
+      addMessage("Вы", msg);
+      
+      if (msg.match(/больше|меньше|это число/i)) {
+        socket.emit("guess_logic_2_2", {
+          room: room,
+          session_id: sessionId,
+          message: msg
+        });
+      }
+      
+      chatInput.value = "";
+    }
 
     function addMessage(sender, text) {
       const div = document.createElement("div");
@@ -203,49 +223,48 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // Получение сообщения от сервера
     socket.on("chat_message", function (data) {
       if (data.sender !== "Вы") {
         addMessage(data.sender, data.message);
       }
     });
-	
-	// Получение списка чисел, которые нужно "затемнить"
-	socket.on('filter_numbers_2_2', (data) => {
-	  const dimList = new Set(data.dim);
-	  dimmedNumbers = new Set([...dimmedNumbers, ...dimList]);
-	  renderPage();  // обновляет таблицу
-	  console.log("Получен результат", data)
-	});
-	
-	socket.on('guess_result_2_2', (data) => {
-	  const overlay = document.createElement('div');
-	  overlay.style.position = 'fixed';
-	  overlay.style.top = 0;
-	  overlay.style.left = 0;
-	  overlay.style.width = '100%';
-	  overlay.style.height = '100%';
-	  overlay.style.background = 'rgba(0,0,0,0.8)';
-	  overlay.style.color = 'white';
-	  overlay.style.fontSize = '32px';
-	  overlay.style.display = 'flex';
-	  overlay.style.justifyContent = 'center';
-	  overlay.style.alignItems = 'center';
-	  overlay.style.zIndex = 1000;
-	  overlay.innerText = data.correct
-		? `✅ Вы угадали число ${data.value}!`
-		: `❌ Это не число ${data.value}`;
-	  document.body.appendChild(overlay);
-	  setTimeout(() => overlay.remove(), 3000);
-	  console.log("Получен результат", data)
-	});
 
+    socket.on('filter_numbers_2_2', (data) => {
+      if (data.target === role) {
+        data.dim.forEach(num => dimmedNumbers.add(num));
+        renderNumbers();
+      }
+    });
+    
+    socket.on('guess_result_2_2', (data) => {
+      if (data.target === role) {
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = 0;
+        overlay.style.left = 0;
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.background = 'rgba(0,0,0,0.8)';
+        overlay.style.color = 'white';
+        overlay.style.fontSize = '32px';
+        overlay.style.display = 'flex';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = 'center';
+        overlay.style.zIndex = 1000;
+        overlay.innerText = data.correct
+          ? `✅ Они угадали ваше число ${data.value}!`
+          : `❌ Это не ваше число ${data.value}`;
+        document.body.appendChild(overlay);
+        setTimeout(() => overlay.remove(), 3000);
+      }
+    });
 
-
-    // Поддержка Enter для отправки
     chatInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter") sendMessage();
     });
+
+    // Initial render
+    renderNumbers();
   </script>
 </body>
 </html>

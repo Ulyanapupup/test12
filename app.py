@@ -28,6 +28,14 @@ game_sessions_2_2 = {}
 
 # Хранилище комнат для сетевой игры режимов 2.1 и 2.2
 rooms = {}
+# Формат rooms:
+# rooms = {
+#   'ROOMCODE': {
+#       'players': set(session_ids),
+#       'creator': session_id,
+#       'mode': None  # '2.1' или '2.2' после выбора
+#   }
+# }
 
 session_to_sid = {}  # сопоставление session_id -> socket.id
 
@@ -559,78 +567,72 @@ def game_creator_2_2():
     return render_template('game2/creator_2_2.html', room=room, session=session)
 
 # Обработчики логики игры для режима 2.2
-@socketio.on('guess_logic_2_2')
+@@socketio.on('guess_logic_2_2')
 def handle_guess_logic_2_2(data):
     room = data['room']
     session_id = data['session_id']
     message = data['message']
     
-    if room_roles.get(room, {}).get('guesser') != session_id:
-        return
+    # Определяем роль отправителя
+    if room in room_roles:
+        if room_roles[room]['guesser'] == session_id:
+            role = 'guesser'
+        elif room_roles[room]['creator'] == session_id:
+            role = 'creator'
+        else:
+            return
     
     game = game_sessions_2_2.setdefault(room, Game2_2())
-    game.handle_question(message)
+    game.handle_question(role, message)
     
-    creator_sid = session_to_sid.get(room_roles[room]['creator'])
-    if creator_sid:
-        emit('need_answer_2_2', {'question': message}, to=creator_sid)
+    # Уведомляем другого игрока, что нужно ответить
+    other_role = 'creator' if role == 'guesser' else 'guesser'
+    other_sid = session_to_sid.get(room_roles[room][other_role])
+    if other_sid:
+        emit('need_answer_2_2', {'question': message}, to=other_sid)
         
 @socketio.on('reply_logic_2_2')
 def handle_reply_logic_2_2(data):
     room = data['room']
     session_id = data['session_id']
-    answer = data['answer']
+    answer = data.get('answer')
     secret = data.get('secret')
     
-    if room_roles.get(room, {}).get('creator') != session_id:
-        return
+    # Определяем роль отправителя
+    if room in room_roles:
+        if room_roles[room]['guesser'] == session_id:
+            role = 'guesser'
+        elif room_roles[room]['creator'] == session_id:
+            role = 'creator'
+        else:
+            return
     
     game = game_sessions_2_2.setdefault(room, Game2_2())
+    
     if secret is not None:
-        game.set_secret(secret)
+        game.set_secret(role, secret)
     
-    result = game.apply_answer(answer)
-    
-    guesser_sid = session_to_sid.get(room_roles[room]['guesser'])
-    if not guesser_sid:
-        return
-    
-    if 'dim' in result:
-        emit('filter_numbers_2_2', {'dim': result['dim']}, to=guesser_sid)
-    elif 'guess' in result:
-        emit('guess_result_2_2', {
-            'correct': result['correct'],
-            'value': result['guess']
-        }, to=guesser_sid)
+    if answer is not None:
+        result = game.apply_answer(role, answer)
         
-@socketio.on('submit_number_2_2')
-def handle_submit_number(data):
-    room = data['room']
-    session_id = data['session_id']
-    number = data['number']
+        # Отправляем результат другому игроку
+        other_role = 'creator' if role == 'guesser' else 'guesser'
+        other_sid = session_to_sid.get(room_roles[room][other_role])
+        if not other_sid:
+            return
+        
+        if 'dim' in result:
+            emit('filter_numbers_2_2', {
+                'dim': result['dim'],
+                'target': result['target']
+            }, to=other_sid)
+        elif 'guess' in result:
+            emit('guess_result_2_2', {
+                'correct': result['correct'],
+                'value': result['guess'],
+                'target': result['target']
+            }, to=other_sid)
 
-    if room not in rooms:
-        return
-
-    # Найдём роль игрока по session_id
-    role = rooms[room].get('roles', {}).get(session_id)
-    if not role:
-        return
-
-    # Убедимся, что у комнаты есть подсловарь для чисел
-    if 'numbers' not in rooms[room]:
-        rooms[room]['numbers'] = {'guesser': None, 'creator': None}
-
-    rooms[room]['numbers'][role] = number
-
-    # Проверим, оба ли отправили число
-    numbers = rooms[room]['numbers']
-    both_ready = numbers['guesser'] is not None and numbers['creator'] is not None
-
-    emit('numbers_status_2_2', {
-        'both_ready': both_ready,
-        'your_number': number
-    }, room=room)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))

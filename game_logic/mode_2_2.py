@@ -2,40 +2,53 @@
 
 class Game2_2:
     def __init__(self):
-        self.pending_check = None  # {'type': '>', 'value': 50}
-        self.last_guess = None     # {'guess': 42}
-        self.secret = None
+        self.pending_checks = {}  # {'creator': {'type': '>', 'value': 50}, 'guesser': {...}}
+        self.last_guesses = {}    # {'creator': 42, 'guesser': 35}
+        self.secrets = {}         # {'creator': None, 'guesser': None}
+        self.dimmed_numbers = {'creator': set(), 'guesser': set()}
 
-    def set_secret(self, number):
-        self.secret = number
+    def set_secret(self, role, number):
+        self.secrets[role] = number
 
-    def handle_question(self, message):
+    def handle_question(self, role, message):
         import re
         msg = message.lower()
-        self.pending_check = None
-        self.last_guess = None
+        self.pending_checks[role] = None
+        self.last_guesses[role] = None
 
         if m := re.search(r"(число\s*)?больше\s*(-?\d+)", msg):
-            self.pending_check = {'type': '>', 'value': int(m.group(2))}
+            self.pending_checks[role] = {'type': '>', 'value': int(m.group(2))}
         elif m := re.search(r"(число\s*)?меньше\s*(-?\d+)", msg):
-            self.pending_check = {'type': '<', 'value': int(m.group(2))}
+            self.pending_checks[role] = {'type': '<', 'value': int(m.group(2))}
         elif m := re.search(r"(это\s*число\s*|число\s*это\s*|равно\s*)?(-?\d+)", msg):
-            self.last_guess = int(m.group(2))
+            self.last_guesses[role] = int(m.group(2))
 
-    def apply_answer(self, answer):
+    def apply_answer(self, role, answer):
         answer = answer.lower()
-        if self.pending_check:
-            t = self.pending_check['type']
-            v = self.pending_check['value']
+        other_role = 'creator' if role == 'guesser' else 'guesser'
+        
+        if role in self.pending_checks and self.pending_checks[role]:
+            t = self.pending_checks[role]['type']
+            v = self.pending_checks[role]['value']
+            
             if t == '>' and answer == 'да':
-                return {'dim': list(range(-1000, v + 1))}
+                self.dimmed_numbers[other_role].update(range(-1000, v + 1))
+                return {'dim': list(range(-1000, v + 1)), 'target': other_role}
             elif t == '>' and answer == 'нет':
-                return {'dim': list(range(v + 1, 1001))}
+                self.dimmed_numbers[other_role].update(range(v + 1, 1001))
+                return {'dim': list(range(v + 1, 1001)), 'target': other_role}
             elif t == '<' and answer == 'да':
-                return {'dim': list(range(v, 1001))}
+                self.dimmed_numbers[other_role].update(range(v, 1001))
+                return {'dim': list(range(v, 1001)), 'target': other_role}
             elif t == '<' and answer == 'нет':
-                return {'dim': list(range(-1000, v))}
-        elif self.last_guess is not None:
-            correct = self.last_guess == self.secret
-            return {'guess': self.last_guess, 'correct': correct}
+                self.dimmed_numbers[other_role].update(range(-1000, v))
+                return {'dim': list(range(-1000, v)), 'target': other_role}
+                
+        elif role in self.last_guesses and self.last_guesses[role] is not None:
+            correct = self.last_guesses[role] == self.secrets.get(other_role)
+            return {
+                'guess': self.last_guesses[role], 
+                'correct': correct,
+                'target': other_role
+            }
         return {}

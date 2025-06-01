@@ -6,10 +6,6 @@ const sessionId = window.session_id;
 let myRole = null;
 let currentRoles = { guesser: null, creator: null };
 
-let numberSubmitted = false;
-let bothNumbersSubmitted = false;
-
-
 // Подключение к комнате
 socket.emit('join_game_room_2_2', { room, session_id: sessionId });
 
@@ -38,11 +34,6 @@ socket.on('role_taken_2_2', (data) => {
 socket.on('player_left', () => {
     alert('Другой игрок покинул игру. Вы будете перенаправлены в комнату.');
     window.location.href = `/game?room=${room}`;
-});
-
-socket.on('numbers_status_2_2', (data) => {
-    bothNumbersSubmitted = data.both_ready;
-    updateUI();
 });
 
 // Вспомогательные функции
@@ -83,12 +74,7 @@ function updateUI() {
         statusMessage += ` | Загадывающий: другой игрок`;
     }
     document.getElementById('status-message').textContent = statusMessage;
-    startBtn.disabled = !(canStartGame() && numberSubmitted && bothNumbersSubmitted);
-	
-	// Показываем поле ввода только если роль выбрана
-	const numberEntry = document.getElementById('number-entry');
-	numberEntry.style.display = myRole ? 'block' : 'none';
-
+    startBtn.disabled = !canStartGame();
 }
 
 function startGame() {
@@ -114,24 +100,6 @@ function leaveGame() {
         socket.emit('leave_game_2_2', { room, session_id: sessionId });
         window.location.href = `/game?room=${room}`;
     }
-}
-
-function submitNumber() {
-    const number = document.getElementById('secret-number').value;
-    if (!number) {
-        alert("Введите число!");
-        return;
-    }
-
-    socket.emit('submit_number_2_2', {
-        room,
-        session_id: sessionId,
-        number: Number(number)
-    });
-
-    numberSubmitted = true;
-    document.getElementById('number-status').textContent = "Число отправлено.";
-    updateUI();
 }
 
 // Инициализация
