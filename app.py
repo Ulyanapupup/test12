@@ -496,61 +496,67 @@ def handle_join_game_room_2_2(data):
     
 @socketio.on('select_role_2_2')
 def handle_select_role_2_2(data):
-    print(f"Выбор роли 2.2: комната {data['room']}, игрок {data['session_id']}, роль {data['role']}")
     room = data['room']
     session_id = data['session_id']
     role = data['role']
     
-    if room not in room_roles:
-        room_roles[room] = {'player1': None, 'player2': None}
+    if room not in rooms:
+        emit('error', {'message': 'Комната не существует'}, to=session_id)
+        return
+    
+    # Инициализация структуры roles если её нет
+    if 'roles' not in rooms[room]:
+        rooms[room]['roles'] = {}
     
     # Освобождаем предыдущие роли этого игрока
-    for r in ['player1', 'player2']:
-        if room_roles[room][r] == session_id:
-            room_roles[room][r] = None
+    for existing_session_id, existing_role in list(rooms[room]['roles'].items()):
+        if existing_session_id == session_id:
+            del rooms[room]['roles'][existing_session_id]
     
-    # Назначаем новую роль
-    room_roles[room][role] = session_id
+    # Проверяем, что роль не занята другим игроком
+    if role in rooms[room]['roles'].values():
+        emit('role_taken', {'role': role}, to=session_id)
+        return
     
-    # Обновляем роли в основной структуре rooms
-    if room in rooms:
-        if 'roles' not in rooms[room]:
-            rooms[room]['roles'] = {}
-        rooms[room]['roles'][session_id] = role
+    # Сохраняем роль игрока
+    rooms[room]['roles'][session_id] = role
     
+    # Отправляем обновление ролей всем в комнате
     emit('roles_updated_2_2', {
-        'roles': room_roles[room],
+        'roles': rooms[room]['roles'],
         'your_role': role
     }, room=room)
+    
+    # Проверяем можно ли активировать кнопку "Играть"
+    if len(rooms[room]['roles']) == 2 and len(set(rooms[room]['roles'].values())) == 2:
+        emit('enable_start_button', {}, room=room)
     
 @socketio.on('start_game_2_2')
 def handle_start_game_2_2(data):
     room = data['room']
-    session_id = session.get('session_id')
-    roles = room_roles.get(room, {})
     
-    if not roles:
-        return {'status': 'error', 'message': 'Комната не существует'}
+    if room not in rooms or 'roles' not in rooms[room] or len(rooms[room]['roles']) != 2:
+        return {'status': 'error', 'message': 'Не все игроки выбрали роли'}
     
-    player1_id = roles.get('player1')
-    player2_id = roles.get('player2')
+    roles = rooms[room]['roles']
+    if len(set(roles.values())) != 2:
+        return {'status': 'error', 'message': 'Оба игрока должны выбрать разные роли!'}
     
-    if player1_id and player2_id:
-        player1_sid = session_to_sid.get(player1_id)
-        player2_sid = session_to_sid.get(player2_id)
-        
-        if not player1_sid or not player2_sid:
-            return {'status': 'error', 'message': 'Один из игроков отключён'}
-        
-        game_sessions_2_2[room] = Game2_2()
-        
-        # Отправляем всех на единый шаблон player.html
-        emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, to=player1_sid)
-        emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, to=player2_sid)
-        
-        return {'status': 'ok'}
-    else:
-        return {'status': 'error', 'message': 'Оба игрока должны выбрать роли!'}
+    player1_id = [sid for sid, role in roles.items() if role == 'player1'][0]
+    player2_id = [sid for sid, role in roles.items() if role == 'player2'][0]
+    
+    player1_sid = session_to_sid.get(player1_id)
+    player2_sid = session_to_sid.get(player2_id)
+    
+    if not player1_sid or not player2_sid:
+        return {'status': 'error', 'message': 'Один из игроков отключён'}
+    
+    game_sessions_2_2[room] = Game2_2()
+    
+    emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, to=player1_sid)
+    emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, to=player2_sid)
+    
+    return {'status': 'ok'}
         
 @app.route('/game2/player')
 def game_player():
