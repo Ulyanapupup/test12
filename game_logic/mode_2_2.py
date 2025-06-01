@@ -19,6 +19,9 @@ def handle_guess(data):
     room = data["room"]
     message = data["message"].lower()
     session_id = data["session_id"]
+    
+    session_secrets[session_id] = session_secrets.get(session_id, {})
+    session_secrets[session_id]["last_question"] = message
 
     numbers = list(range(-100, 101))
 
@@ -61,34 +64,42 @@ def handle_guess(data):
 def handle_reply(data):
     room = data["room"]
     session_id = data["session_id"]
+    answer = data.get("answer", "").strip().lower()
+    secret = data.get("secret")
 
-    # Установка секретного числа
-    if "secret" in data and "answer" not in data:
-        session_secrets[session_id] = data["secret"]
+    if secret is not None:
+        session_secrets[session_id] = {"secret": secret}
         return
 
-    # Обработка логического ответа (да/нет)
     if "answer" in data:
-        answer = data["answer"].strip().lower()
-        secret = session_secrets.get(session_id)
-        if secret is None:
+        if session_id not in session_secrets or "last_question" not in session_secrets[session_id]:
             return
 
-        # Попытка восстановить вопрос из чата
-        # Пример: последний вопрос был "Число больше 20?", пользователь отвечает "да"
-        # Ты можешь хранить последнее сообщение соперника для более точной логики,
-        # но здесь сделаем простую эвристику
-        # В дальнейшем можно улучшить логику с контекстом чата
+        question = session_secrets[session_id]["last_question"]
+        numbers = list(range(-100, 101))
+        to_dim = []
 
-        # Пример (если последнее сообщение известно и было сохранено в session)
-        # Здесь просто для примера жестко заданы шаблоны
+        # Пример: "число больше 50?" и ответ "да"
+        match = re.search(r"число\s*больше\s*(-?\d+)", question)
+        if match:
+            val = int(match.group(1))
+            if answer == "да":
+                to_dim = [n for n in numbers if n <= val]
+            elif answer == "нет":
+                to_dim = [n for n in numbers if n > val]
 
-        # Это пример на будущее — пока просто покажем как можно отфильтровать
+        match = re.search(r"число\s*меньше\s*(-?\d+)", question)
+        if match:
+            val = int(match.group(1))
+            if answer == "да":
+                to_dim = [n for n in numbers if n >= val]
+            elif answer == "нет":
+                to_dim = [n for n in numbers if n < val]
 
-        # Пример — если бы вопрос был "Число больше 50?"
-        # и ответ "да", значит убираем все ≤ 50
+        if to_dim:
+            emit("filter_numbers_2_2", {
+                "target": "guesser",
+                "dim": to_dim
+            }, room=room)
 
-        # Простой парсинг — лучше привязать к предыдущему сообщению, а не к ответу
-        # можно позже передавать в reply последний вопрос
-        pass  # Сейчас основная логика в guess_logic — ответ только показывает "да/нет"
 
