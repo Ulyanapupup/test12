@@ -17,15 +17,11 @@ from game_logic.mode_2_2 import Game2_2
 
 app = Flask(__name__)
 app.secret_key = 'some_secret_key'  # для сессий
-socketio = SocketIO(app, 
-                   cors_allowed_origins="*",
-                   async_mode='eventlet',
-                   engineio_logger=True,
-                   logger=True)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 games = {}  # хранилище активных игр для режима 1.2: {game_id: Game}
 
-room_roles = {} 
+room_roles = {}  # {room_code: {'guesser': session_id, 'creator': session_id}}
 
 game_sessions = {}  # {'ROOM123': Game2_1()}
 game_sessions_2_2 = {}
@@ -43,6 +39,7 @@ rooms = {}
 
 session_to_sid = {}  # сопоставление session_id -> socket.id
 
+
 def generate_session_id():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=16))
 
@@ -50,12 +47,6 @@ def generate_session_id():
 def make_session_permanent():
     if 'session_id' not in session:
         session['session_id'] = generate_session_id()
-        
-@app.before_request
-def handle_before_request():
-    if request.path.startswith('/socket.io'):
-        # Для запросов Socket.IO пропускаем CSRF проверки
-        return
 
 # --- Маршруты ---
 
@@ -426,7 +417,7 @@ def game_guesser():
 def game_creator():
     room = request.args.get('room')
     return render_template('game2/creator.html', room=room, session=session)
-        
+    
 @app.route('/debug/templates')
 def debug_templates():
     return str(os.listdir('templates/game2'))  # Должен показать ['guesser.html', 'creator.html']
@@ -503,154 +494,170 @@ def handle_join_game_room_2_2(data):
         'your_role': next((role for role, sid in room_roles[room].items() if sid == session_id), None)
     }, to=sid)
     
+@socketio.on('select_role_2_2')
+def handle_select_role_2_2(data):
+    print(f"Выбор роли 2.2: комната {data['room']}, игрок {data['session_id']}, роль {data['role']}")
+    room = data['room']
+    session_id = data['session_id']
+    role = data['role']
+    
+    if room not in room_roles:
+        room_roles[room] = {'guesser': None, 'creator': None}
+    
+    # Освобождаем предыдущие роли этого игрока
+    for r in ['guesser', 'creator']:
+        if room_roles[room][r] == session_id:
+            room_roles[room][r] = None
+    
+    # Назначаем новую роль
+    room_roles[room][role] = session_id
+    
+    # Обновляем роли в основной структуре rooms
+    if room in rooms:
+        if 'roles' not in rooms[room]:
+            rooms[room]['roles'] = {}
+        rooms[room]['roles'][session_id] = role
+    
+    emit('roles_updated_2_2', {
+        'roles': room_roles[room],
+        'your_role': role
+    }, room=room)
     
 @socketio.on('start_game_2_2')
 def handle_start_game_2_2(data):
     room = data['room']
+    session_id = session.get('session_id')
+    roles = room_roles.get(room, {})
     
-    if room in rooms and all(rooms[room]['numbers_2_2'].values()):
-        # Инициализируем игру
-        game_sessions_2_2[room] = {
-            'numbers': rooms[room]['numbers_2_2'],
-            'current_player': 1,  # Первый ход у игрока 1
-            'players': rooms[room]['players_2_2']
-        }
-        
-        # Отправляем редирект всем игрокам
-        for player in [1, 2]:
-            sid = session_to_sid.get(rooms[room]['players_2_2'][player])
-            if sid:
-                emit('redirect_2_2', {
-                    'url': f'/game2/player?room={room}&player={player}'
-                }, to=sid)
-        
-        # Уведомляем о начале игры и первом ходе
-        emit('turn_update', {'currentPlayer': 1}, room=room)
-        
-        
-@socketio.on('select_player_2_2')
-def handle_select_player_2_2(data):
-    room = data['room']
-    session_id = data['session_id']
-    player = data['player']
+    if not roles:
+        return {'status': 'error', 'message': 'Комната не существует'}
     
-    if room not in rooms:
-        return
+    player1_id = roles.get('player1')
+    player2_id = roles.get('player2')
     
-    # Инициализируем структуру players если её нет
-    if 'players_2_2' not in rooms[room]:
-        rooms[room]['players_2_2'] = {1: None, 2: None}
-        rooms[room]['numbers_2_2'] = {1: None, 2: None}
-    
-    # Освобождаем предыдущие выборы этого игрока
-    for p in [1, 2]:
-        if rooms[room]['players_2_2'][p] == session_id:
-            rooms[room]['players_2_2'][p] = None
-            rooms[room]['numbers_2_2'][p] = None
-    
-    # Назначаем нового игрока
-    rooms[room]['players_2_2'][player] = session_id
-    
-    emit('players_updated_2_2', {
-        'playersReady': {
-            1: rooms[room]['numbers_2_2'][1] is not None,
-            2: rooms[room]['numbers_2_2'][2] is not None
-        },
-        'myPlayer': player
-    }, room=room)
-    
-@socketio.on('confirm_number_2_2')
-def handle_confirm_number_2_2(data):
-    room = data['room']
-    session_id = data['session_id']
-    player = data['player']
-    number = data['number']
-    
-    if room in rooms:
-        rooms[room]['numbers_2_2'][player] = number
-        emit('players_updated_2_2', {
-            'playersReady': {
-                1: rooms[room]['numbers_2_2'][1] is not None,
-                2: rooms[room]['numbers_2_2'][2] is not None
-            }
-        }, room=room)
+    if player1_id and player2_id:
+        player1_sid = session_to_sid.get(player1_id)
+        player2_sid = session_to_sid.get(player2_id)
         
-@socketio.on('question_2_2')
-def handle_question_2_2(data):
-    room = data['room']
-    player = data['player']
-    message = data['message']
-    
-    # Проверяем, что это действительно ход этого игрока
-    if room in game_sessions_2_2 and game_sessions_2_2[room]['current_player'] == player:
-        # Сохраняем текущий вопрос
-        game_sessions_2_2[room]['current_question'] = {
-            'from': player,
-            'text': message
-        }
+        if not player1_sid or not player2_sid:
+            return {'status': 'error', 'message': 'Один из игроков отключён'}
         
-        # Передаем ход другому игроку
-        other_player = 2 if player == 1 else 1
-        game_sessions_2_2[room]['current_player'] = other_player
-        emit('turn_update', {'currentPlayer': other_player}, room=room)
+        game_sessions_2_2[room] = Game2_2()
         
-        # Отправляем сообщение в чат
-        emit('chat_message', {
-            'sender': player,
-            'message': message
-        }, room=room)
+        # Отправляем всех на единый шаблон player.html
+        emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, to=player1_sid)
+        emit('redirect_2_2', {'url': f'/game2/player?room={room}'}, to=player2_sid)
         
-@socketio.on('answer_2_2')
-def handle_answer_2_2(data):
-    room = data['room']
-    player = data['player']
-    answer = data['answer']
-    
-    # Проверяем, что это ответ на текущий вопрос
-    if (room in game_sessions_2_2 and 
-        'current_question' in game_sessions_2_2[room] and
-        game_sessions_2_2[room]['current_question']['from'] != player):
-        
-        question = game_sessions_2_2[room]['current_question']['text']
-        question_player = game_sessions_2_2[room]['current_question']['from']
-        
-        # Обрабатываем ответ с помощью Game2_2
-        game = Game2_2()
-        game.set_secret(game_sessions_2_2[room]['numbers'][player])
-        game.handle_question(question)
-        result = game.apply_answer(answer)
-        
-        # Отправляем результат
-        if 'dim' in result:
-            emit('filter_numbers_2_2', {
-                'player': question_player,
-                'dim': result['dim']
-            }, room=room)
-        elif 'guess' in result:
-            emit('guess_result_2_2', {
-                'player': question_player,
-                'value': result['guess'],
-                'correct': result['correct']
-            }, room=room)
-        
-        # Возвращаем ход задавшему вопрос игроку
-        game_sessions_2_2[room]['current_player'] = question_player
-        emit('turn_update', {'currentPlayer': question_player}, room=room)
-        
-        # Отправляем сообщение в чат
-        emit('chat_message', {
-            'sender': player,
-            'message': answer
-        }, room=room)
-        
-        # Очищаем текущий вопрос
-        del game_sessions_2_2[room]['current_question']
+        return {'status': 'ok'}
+    else:
+        return {'status': 'error', 'message': 'Оба игрока должны выбрать роли!'}
         
 @app.route('/game2/player')
 def game_player():
     room = request.args.get('room')
-    player = request.args.get('player')
-    return render_template('game2/player.html', room=room, player=player, session=session)
+    session_id = session['session_id']
+    
+    # Определяем роль игрока
+    role = None
+    if room in room_roles:
+        for r, sid in room_roles[room].items():
+            if sid == session_id:
+                role = r
+                break
+    
+    if not role:
+        return redirect(url_for('game_mode_2_2', room=room))
+    
+    # Определяем, чей сейчас ход
+    game = game_sessions_2_2.get(room, Game2_2())
+    is_my_turn = game.current_player == role
+    
+    return render_template('game2/player.html', 
+                         room=room, 
+                         session=session,
+                         role=role,
+                         is_my_turn=is_my_turn)
+
+@socketio.on('set_secret_2_2')
+def handle_set_secret_2_2(data):
+    room = data['room']
+    session_id = data['session_id']
+    secret = data['secret']
+    
+    if room in game_sessions_2_2:
+        # Получаем роль игрока
+        role = None
+        for r, sid in room_roles[room].items():
+            if sid == session_id:
+                role = r
+                break
+                
+        if role:
+            game_sessions_2_2[room].set_secret(role, secret)
+            emit('secret_set', {'role': role, 'secret': secret}, room=room)
+            
+            # Проверяем можно ли начинать игру
+            game = game_sessions_2_2[room]
+            if game.secrets['player1'] and game.secrets['player2']:
+                emit('can_start_game', {}, room=room)
+
+# Обработчики логики игры для режима 2.2
+@socketio.on('guess_logic_2_2')
+def handle_guess_logic_2_2(data):
+    room = data['room']
+    session_id = data['session_id']
+    message = data['message']
+    
+    # Получаем роль спрашивающего
+    asker_role = None
+    for role, sid in room_roles[room].items():
+        if sid == session_id:
+            asker_role = role
+            break
+    
+    if not asker_role or room not in game_sessions_2_2:
+        return
+    
+    game = game_sessions_2_2[room]
+    if game.current_player != asker_role:
+        emit('wrong_turn', {'message': 'Сейчас не ваш ход!'}, to=request.sid)
+        return
+    
+    next_player = game.handle_question(asker_role, message)
+    
+    # Уведомляем другого игрока, что нужно ответить
+    other_player_sid = session_to_sid.get(room_roles[room][next_player])
+    if other_player_sid:
+        emit('need_answer_2_2', {'question': message}, to=other_player_sid)
+        emit('wait_turn', {'current_player': asker_role}, room=room, skip_sid=other_player_sid)
+        
+@socketio.on('reply_logic_2_2')
+def handle_reply_logic_2_2(data):
+    room = data['room']
+    session_id = data['session_id']
+    answer = data['answer']
+    secret = data.get('secret')
+    
+    if room_roles.get(room, {}).get('creator') != session_id:
+        return
+    
+    game = game_sessions_2_2.setdefault(room, Game2_2())
+    if secret is not None:
+        game.set_secret(secret)
+    
+    result = game.apply_answer(answer)
+    
+    guesser_sid = session_to_sid.get(room_roles[room]['guesser'])
+    if not guesser_sid:
+        return
+    
+    if 'dim' in result:
+        emit('filter_numbers_2_2', {'dim': result['dim']}, to=guesser_sid)
+    elif 'guess' in result:
+        emit('guess_result_2_2', {
+            'correct': result['correct'],
+            'value': result['guess']
+        }, to=guesser_sid)
 
 
 if __name__ == '__main__':
