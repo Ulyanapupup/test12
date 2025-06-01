@@ -568,13 +568,12 @@ def handle_guess_logic_2_2(data):
     message = data['message']
     
     # Проверяем роль отправителя
-    if room in room_roles:
-        if session_id in room_roles[room].values():  # проверяем, что игрок — либо guesser, либо creator
-            handle_guess({
-                "room": room,
-                "session_id": session_id,
-                "message": message
-            })
+    if room in room_roles and room_roles[room]['guesser'] == session_id:
+        handle_guess({
+            "room": room,
+            "session_id": session_id,
+            "message": message
+        })
         
 @socketio.on('reply_logic_2_2')
 def handle_reply_logic_2_2(data):
@@ -582,19 +581,18 @@ def handle_reply_logic_2_2(data):
     session_id = data['session_id']
     
     # Проверяем, что отправитель - создатель
-    if room in room_roles and session_id in room_roles[room].values():
+    if room in room_roles and room_roles[room]['creator'] == session_id:
         reply_data = {
             "room": room,
             "session_id": session_id
         }
-
+        
         if 'answer' in data:
             reply_data['answer'] = data['answer']
         if 'secret' in data:
             reply_data['secret'] = data['secret']
-
+            
         handle_reply(reply_data)
-
         
 @socketio.on('set_secret_2_2')
 def handle_set_secret_2_2(data):

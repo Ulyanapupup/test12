@@ -3,8 +3,8 @@
 from flask_socketio import emit, join_room
 import re
 
-# Храним секретные числа и последние вопросы для каждой сессии
-session_data = {}
+# Храним секретные числа для каждой сессии
+session_secrets = {}
 
 def join_game(data):
     room = data["room"]
@@ -13,95 +13,83 @@ def join_game(data):
 def set_secret(data):
     session_id = data["session_id"]
     secret = data["secret"]
-    if session_id not in session_data:
-        session_data[session_id] = {}
-    session_data[session_id]["secret"] = secret
+    session_secrets[session_id] = secret
 
 def handle_guess(data):
     room = data["room"]
     message = data["message"].lower()
     session_id = data["session_id"]
+    
+    session_secrets[session_id] = session_secrets.get(session_id, {})
+    session_secrets[session_id]["last_question"] = message
 
-    # Сохраняем последний вопрос игрока
-    if session_id not in session_data:
-        session_data[session_id] = {}
-    session_data[session_id]["last_question"] = message
+    numbers = list(range(-100, 101))
 
-    # Проверяем прямое угадывание числа
-    match = re.search(r"число\s*(равно|это)\s*(-?\d+)", message)
+    # Разбор вопроса
+    match = re.search(r"число\s*(?:равно|это)\s*(-?\d+)", message)
     if match:
-        guess = int(match.group(2))
-        secret = session_data.get(session_id, {}).get("secret")
-        correct = secret is not None and secret == guess
+        guess = int(match.group(1))
         emit("guess_result_2_2", {
             "target": "creator",
             "value": guess,
-            "correct": correct
+            "correct": session_secrets.get(session_id) == guess
         }, room=room)
         emit("guess_result_2_2", {
             "target": "guesser",
             "value": guess,
-            "correct": correct
+            "correct": session_secrets.get(session_id) == guess
         }, room=room)
+        return
+
+    if match := re.search(r"число\s*больше\s*(-?\d+)", message):
+        session_secrets[session_id]["pending_question"] = {
+            'type': '>', 
+            'value': int(match.group(1))
+        }
+        # Не фильтруем сразу, только сохраняем вопрос
+        return
+
+    elif match := re.search(r"число\s*меньше\s*(-?\d+)", message):
+        session_secrets[session_id]["pending_question"] = {
+            'type': '<', 
+            'value': int(match.group(1))
+        }
+        # Не фильтруем сразу, только сохраняем вопрос
+        return
 
 def handle_reply(data):
     room = data["room"]
     session_id = data["session_id"]
-    answer = data.get("answer", "").strip().lower()
-    secret = data.get("secret")
 
-    if secret is not None:
-        set_secret(data)
+    # Установка секретного числа
+    if "secret" in data and "answer" not in data:
+        session_secrets[session_id] = data["secret"]
         return
 
-    # Находим вопрос от другого игрока
-    other_session_id = None
-    for role, sid in room_roles.get(room, {}).items():
-        if sid != session_id:
-            other_session_id = sid
-            break
-
-    if not other_session_id or other_session_id not in session_data:
-        print("Нет второго игрока или нет данных")
-        return
-
-    last_question = session_data[other_session_id].get("last_question", "")
-    if not last_question:
-        print("Нет вопроса от второго игрока")
-        return
-
-    print("Последний вопрос:", last_question)
-    print("Ответ:", answer)
-
-    numbers = list(range(-100, 101))
-    to_dim = []
-
-    # Обработка вопроса "число больше X?"
-    match = re.search(r"число\s*больше\s*(-?\d+)", last_question)
-    if match:
-        val = int(match.group(1))
-        if answer == "да":
-            to_dim = [n for n in numbers if n <= val]
-        elif answer == "нет":
-            to_dim = [n for n in numbers if n > val]
-
-    # Обработка вопроса "число меньше X?"
-    match = re.search(r"число\s*меньше\s*(-?\d+)", last_question)
-    if match:
-        val = int(match.group(1))
-        if answer == "да":
-            to_dim = [n for n in numbers if n >= val]
-        elif answer == "нет":
-            to_dim = [n for n in numbers if n < val]
-
-    print("Зачёркиваем числа:", to_dim)
-
-    if to_dim:
+    # Обработка логического ответа (да/нет)
+    if "answer" in data:
+        answer = data["answer"].strip().lower()
+        secret = session_secrets.get(session_id)
+        if not secret or "pending_question" not in session_secrets[session_id]:
+            return
+            
+        question = session_secrets[session_id]["pending_question"]
+        numbers = list(range(-100, 101))
+        
+        if question['type'] == '>':
+            if answer == 'да':
+                to_dim = [n for n in numbers if n <= question['value']]
+            else:
+                to_dim = [n for n in numbers if n > question['value']]
+        elif question['type'] == '<':
+            if answer == 'да':
+                to_dim = [n for n in numbers if n >= question['value']]
+            else:
+                to_dim = [n for n in numbers if n < question['value']]
+        
         emit("filter_numbers_2_2", {
             "target": "guesser",
             "dim": to_dim
         }, room=room)
-        emit("filter_numbers_2_2", {
-            "target": "creator",
-            "dim": to_dim
-        }, room=room)
+        del session_secrets[session_id]["pending_question"]
+
