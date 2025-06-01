@@ -104,8 +104,8 @@
     <h3>Ты — Угадывающий</h3>
     
     <div class="secret-input">
-      <p>Загадай число от -1000 до 1000:</p>
-      <input type="number" id="secret-number" value="0" min="-1000" max="1000">
+      <p>Загадай число от -100 до 100:</p>
+	  <input type="number" id="secret-number" value="0" min="-100" max="100">
       <button onclick="confirmNumber()">Подтвердить</button>
       <p id="status"></p>
     </div>
@@ -229,11 +229,12 @@
     });
 
     socket.on('filter_numbers_2_2', (data) => {
-      if (data.target === role) {
-        data.dim.forEach(num => dimmedNumbers.add(num));
-        renderNumbers();
-      }
-    });
+		console.log("Received filter_numbers_2_2:", data);  // Добавьте это для отладки
+		if (data.target === role) {
+			data.dim.forEach(num => dimmedNumbers.add(num));
+			renderNumbers();
+		}
+	});
     
     socket.on('guess_result_2_2', (data) => {
       if (data.target === role) {
