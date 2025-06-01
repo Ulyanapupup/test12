@@ -137,21 +137,19 @@
     }
 
     function renderNumbers() {
-      numberGrid.innerHTML = "";
-      const numbers = Array.from({ length: 21 }, (_, i) => i - 10 + (currentPage * 20));
-      
-      for (const num of numbers) {
-        if (num < -1000 || num > 1000) continue;
-        
-        const el = document.createElement("div");
-        el.className = "number";
-        if (dimmedNumbers.has(num)) {
-          el.classList.add("dimmed");
-        }
-        el.textContent = num;
-        numberGrid.appendChild(el);
-      }
-    }
+		numberGrid.innerHTML = "";
+		const numbers = Array.from({ length: 201 }, (_, i) => i - 100); // от -100 до 100
+		
+		for (const num of numbers) {
+			const el = document.createElement("div");
+			el.className = "number";
+			if (dimmedNumbers.has(num)) {
+				el.classList.add("dimmed");
+			}
+			el.textContent = num;
+			numberGrid.appendChild(el);
+		}
+	}
 
     // --- Socket.IO ---
     const socket = io();
@@ -205,7 +203,7 @@
     });
 
     socket.on('filter_numbers_2_2', (data) => {
-		console.log("Received filter_numbers_2_2:", data);  // Добавьте это для отладки
+		console.log("Received filter_numbers_2_2:", data);
 		if (data.target === role) {
 			data.dim.forEach(num => dimmedNumbers.add(num));
 			renderNumbers();

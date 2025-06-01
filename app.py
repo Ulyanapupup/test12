@@ -573,7 +573,7 @@ def handle_guess_logic_2_2(data):
     session_id = data['session_id']
     message = data['message']
     
-    print(f"Guess logic 2.2 received: {data}")  # Логирование
+    print(f"Guess logic 2.2 received: {data}")
     
     # Определяем роль отправителя
     if room in room_roles:

@@ -149,22 +149,19 @@
     }
 
     function renderNumbers() {
-      numberGrid.innerHTML = "";
-      const start = currentPage === 0 ? -100 : 0;
-      const end = currentPage === 0 ? 0 : 101;
-      
-      for (let num = start; num < end; num++) {
-        const el = document.createElement("div");
-        el.className = "number";
-        if (dimmedNumbers.has(num)) {
-          el.classList.add("dimmed");
-        }
-        el.textContent = num;
-        numberGrid.appendChild(el);
-      }
-      
-      pageSpan.textContent = currentPage + 1;
-    }
+		numberGrid.innerHTML = "";
+		const numbers = Array.from({ length: 201 }, (_, i) => i - 100); // от -100 до 100
+		
+		for (const num of numbers) {
+			const el = document.createElement("div");
+			el.className = "number";
+			if (dimmedNumbers.has(num)) {
+				el.classList.add("dimmed");
+			}
+			el.textContent = num;
+			numberGrid.appendChild(el);
+		}
+	}
 
     function nextPage() {
       if (currentPage < 1) {
@@ -229,7 +226,7 @@
     });
 
     socket.on('filter_numbers_2_2', (data) => {
-		console.log("Received filter_numbers_2_2:", data);  // Добавьте это для отладки
+		console.log("Received filter_numbers_2_2:", data);
 		if (data.target === role) {
 			data.dim.forEach(num => dimmedNumbers.add(num));
 			renderNumbers();
