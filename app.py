@@ -1,6 +1,6 @@
 import eventlet
 eventlet.monkey_patch()
-handle_guess_logic_2_2
+
 import os
 import uuid
 import random
