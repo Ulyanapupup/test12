@@ -1,6 +1,6 @@
 import eventlet
 eventlet.monkey_patch()
-on_choose_mode
+
 import os
 import uuid
 import random
